@@ -1,0 +1,9 @@
+{
+  "stryker": {
+    "reporters": ["progress", "html"],
+    "mutate": ["**/*.cs"],
+    "exclude": ["**/*Tests*.cs", "**/*.axaml.cs"],
+    "test-projects": ["tests/CcUsageMonitor.Core.Tests/CcUsageMonitor.Core.Tests.csproj"],
+    "verbosity": "info"
+  }
+}
