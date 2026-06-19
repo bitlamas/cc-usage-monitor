@@ -206,7 +206,7 @@ public class CredentialStoreTests
     #region Token secrecy
 
     [Fact]
-    public void CredentialStore_GetAccessToken_TokenNeverLoggedToOutput()
+    public void CredentialStore_GetAccessToken_TokenIsNonEmptyString()
     {
         // Arrange
         var fixturePath = Path.Combine(_tempDir, ".credentials.json");
@@ -217,12 +217,14 @@ public class CredentialStoreTests
         var store = new CredentialStore(fakeRunner, fixturePath);
 
         // Act
-        var output = store.GetAccessToken();
+        var token = store.GetAccessToken();
 
-        // Assert — the token should never appear in any public API output beyond the getter itself
-        // (This is a structural check: no logging in GetAccessToken or RefreshAsync)
-        // The token value is only returned via the getter, not written to any stream/console
-        Assert.NotNull(output);
+        // Assert — token is a non-empty string (not null, not whitespace)
+        // The token is only exposed via the getter return value, never logged to streams
+        Assert.NotNull(token);
+        Assert.NotEmpty(token);
+        Assert.DoesNotContain("\n", token);
+        Assert.DoesNotContain("\r", token);
     }
 
     #endregion

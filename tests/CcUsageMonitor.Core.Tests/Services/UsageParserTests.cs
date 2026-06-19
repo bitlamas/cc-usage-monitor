@@ -174,15 +174,16 @@ public class UsageParserTests
     }
 
     [Fact]
-    public void UsageParser_Parse_MalformedJson_Throws()
+    public void UsageParser_Parse_MalformedJson_ThrowsJsonException()
     {
         // Arrange
         var json = GetFixture("usage_malformed.json");
 
         // Act + Assert
-        // Malformed JSON throws an exception from System.Text.Json
-        var ex = Assert.ThrowsAny<Exception>(() => UsageParser.Parse(json));
-        Assert.Contains("invalid", ex.Message.ToLowerInvariant());
+        // Malformed JSON throws a JsonReaderException (subclass of JsonException) from
+        // System.Text.Json. Use ThrowsAny for framework-version-proof type matching.
+        var ex = Assert.ThrowsAny<JsonException>(() => UsageParser.Parse(json));
+        Assert.NotNull(ex.Message);
     }
 
     [Fact]

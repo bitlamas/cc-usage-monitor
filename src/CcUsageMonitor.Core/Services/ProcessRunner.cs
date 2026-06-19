@@ -27,6 +27,7 @@ public class ProcessRunner : IProcessRunner
             return -1;
 
         using var timeoutCts = new CancellationTokenSource();
+        timeoutCts.CancelAfter(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         try

@@ -9,6 +9,11 @@ using CcUsageMonitor.Core.Models;
 namespace CcUsageMonitor.Core.Services;
 
 /// <summary>
+/// Internal result type for TryFetch — decouples HTTP status from the parsed snapshot.
+/// </summary>
+internal readonly record struct FetchResult(UsageSnapshot Snapshot, HttpStatusCode StatusCode);
+
+/// <summary>
 /// HTTP-based usage client that fetches from the Anthropic API.
 /// Per spec §4.2: bodyless GET, no Content-Type, 401-refresh-retry-once.
 /// </summary>
@@ -59,8 +64,8 @@ public class UsageClient : IUsageClient
 
         var result = await TryFetch(token, ct).ConfigureAwait(false);
 
-        // On 401: refresh once and retry
-        if (result.Error != null && result.Error.Contains("401"))
+        // On 401: refresh once and retry (branch on typed status, not message)
+        if (result.StatusCode == HttpStatusCode.Unauthorized)
         {
             try
             {
@@ -79,10 +84,10 @@ public class UsageClient : IUsageClient
             // If token is still null after refresh, return the original error
         }
 
-        return result;
+        return result.Snapshot;
     }
 
-    private async Task<UsageSnapshot> TryFetch(string token, CancellationToken ct)
+    private async Task<FetchResult> TryFetch(string token, CancellationToken ct)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, ApiBaseUrl + Endpoint);
 
@@ -98,45 +103,39 @@ public class UsageClient : IUsageClient
         }
         catch (Exception ex)
         {
-            return new UsageSnapshot(
+            return new FetchResult(new UsageSnapshot(
                 BuildEmptySnapshot(),
                 DateTimeOffset.UtcNow,
                 Error: SanitizeError(ex.Message),
-                Stale: true);
+                Stale: true), HttpStatusCode.ServiceUnavailable);
         }
 
         var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        if (response.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            return new UsageSnapshot(
-                BuildEmptySnapshot(),
-                DateTimeOffset.UtcNow,
-                Error: "HTTP 401 after refresh",
-                Stale: true);
-        }
-
         if (!response.IsSuccessStatusCode)
         {
-            return new UsageSnapshot(
+            var error = response.StatusCode == HttpStatusCode.Unauthorized
+                ? "HTTP 401 after refresh"
+                : $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
+            return new FetchResult(new UsageSnapshot(
                 BuildEmptySnapshot(),
                 DateTimeOffset.UtcNow,
-                Error: $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}",
-                Stale: true);
+                Error: error,
+                Stale: true), response.StatusCode);
         }
 
         try
         {
             var snapshot = UsageParser.Parse(body);
-            return snapshot;
+            return new FetchResult(snapshot, response.StatusCode);
         }
         catch
         {
-            return new UsageSnapshot(
+            return new FetchResult(new UsageSnapshot(
                 BuildEmptySnapshot(),
                 DateTimeOffset.UtcNow,
                 Error: "Failed to parse usage response",
-                Stale: true);
+                Stale: true), HttpStatusCode.InternalServerError);
         }
     }
 

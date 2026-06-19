@@ -105,7 +105,25 @@ public class ProcessRunnerTests
         Assert.Equal(-1, code);
     }
 
-    // NOTE: Real-process integration tests (sleep infinity / ping -t) are excluded
-    // because the OS process kill behavior is non-deterministic on some systems.
-    // The fake-based tests above cover the full interface contract and all spec edges.
+    [Fact]
+    public async Task ProcessRunner_RealRunner_Timeout_KillsProcessAndReturnsNegativeOne()
+    {
+        // Arrange — real ProcessRunner with a command that outlives the timeout
+        // Uses `sleep 5` (GNU/coreutils sleep, available in MSYS2/WSL/Unix) which
+        // blocks for 5 seconds. ProcessRunner timeout is 1 second.
+        var runner = new ProcessRunner();
+        var timeout = TimeSpan.FromSeconds(1);
+        var file = "sleep";
+        var args = "5";
+
+        // Act
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var exitCode = await runner.RunAsync(file, args, timeout, CancellationToken.None);
+        stopwatch.Stop();
+
+        // Assert — should return -1 within ~timeout + small margin
+        Assert.Equal(-1, exitCode);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+            $"Timeout kill should return within ~1s, took {stopwatch.Elapsed.TotalSeconds:F1}s");
+    }
 }

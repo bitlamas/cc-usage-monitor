@@ -47,14 +47,15 @@ public class Poller
     /// <summary>
     /// Starts the polling loop. Safe to call multiple times; subsequent calls are ignored.
     /// </summary>
-    public async Task StartAsync(CancellationToken ct)
+    public Task StartAsync(CancellationToken ct)
     {
         if (_runningTask != null)
-            return; // Already running
+            return Task.CompletedTask; // Already running
 
         _cts = new CancellationTokenSource();
         var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, ct);
         _runningTask = RunLoop(linkedCts.Token);
+        return Task.CompletedTask;
     }
 
     /// <summary>
