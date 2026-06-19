@@ -1,0 +1,26 @@
+{
+  "five_hour": {
+    "utilization": 72.0,
+    "resets_at": "2026-06-18T18:49:59.201483+00:00"
+  },
+  "seven_day": {
+    "utilization": 45.5,
+    "resets_at": "2026-06-22T00:00:00.000000+00:00"
+  },
+  "seven_day_sonnet": {
+    "utilization": 60.0,
+    "resets_at": null
+  },
+  "seven_day_opus": {
+    "utilization": 10.0,
+    "resets_at": "2026-06-20T00:00:00+00:00"
+  },
+  "seven_day_cowork": {
+    "utilization": 30.0,
+    "resets_at": "2026-06-22T00:00:00+00:00"
+  },
+  "tangelo": {
+    "utilization": 50.0,
+    "resets_at": "2026-06-22T00:00:00+00:00"
+  }
+}
