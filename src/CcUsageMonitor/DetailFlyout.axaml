@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:models="using:CcUsageMonitor"
+        x:Class="CcUsageMonitor.DetailFlyout"
+        Title="Claude Code Usage"
+        Width="320"
+        MinWidth="280"
+        Height="350"
+        MinHeight="200"
+        MaxHeight="400"
+        WindowStartupLocation="CenterOwner"
+        WindowState="Normal"
+        CanResize="false"
+        SystemDecorations="None"
+        Background="{DynamicResource SystemControlPageBackgroundAltBrush}"
+        ShowInTaskbar="false"
+        Topmost="true">
+
+    <Panel>
+        <!-- Outer border for window look -->
+        <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <StackPanel Margin="16">
+                <TextBlock Text="Claude Code Usage"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,12"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+
+                <ItemsControl x:Name="LimitsList"
+                              Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="models:FlyoutItem">
+                            <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                    BorderThickness="0,1,0,0"
+                                    Padding="0,8">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Label}"
+                                               FontSize="13"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                    <TextBlock Text="{Binding PctDisplay}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                               Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding ResetDisplay}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                               Margin="0,1,0,0"/>
+                                    <TextBlock Text="{Binding UpdatedDisplay}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                               Margin="0,1,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock x:Name="StaleText"
+                           Text="Data may be stale"
+                           FontSize="10"
+                           FontStyle="Italic"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Margin="0,0,0,0"
+                           IsVisible="false"/>
+            </StackPanel>
+        </Border>
+    </Panel>
+</Window>
