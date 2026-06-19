@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using CcUsageMonitor.Core.Models;
 using CcUsageMonitor.Core.Services;
 using Xunit;
 
@@ -22,8 +23,8 @@ public class ConfigStoreTests
         var store = new ConfigStore(_tempDir);
         var config = store.Load();
 
-        Assert.Contains("Session5h", config.SelectedLimits);
-        Assert.Contains("WeeklyAll", config.SelectedLimits);
+        Assert.Contains(LimitKind.Session5h, config.SelectedLimits);
+        Assert.Contains(LimitKind.WeeklyAll, config.SelectedLimits);
         Assert.False(config.ShowNumberInRing);
         Assert.True(config.AlertsEnabled);
         Assert.Equal(90, config.AlertThreshold);
@@ -41,14 +42,14 @@ public class ConfigStoreTests
     {
         var store = new ConfigStore(_tempDir);
         var original = new AppConfig(
-            new List<string> { "Session5h", "WeeklySonnet" },
+            new List<LimitKind> { LimitKind.Session5h, LimitKind.WeeklySonnet },
             true,
             false,
             85,
             65,
-        300,
-        false,
-        new Dictionary<string, string> { { "green", "#00FF00" } });
+            300,
+            false,
+            new Dictionary<string, string> { { "green", "#00FF00" } });
 
         store.Save(original);
         var loaded = store.Load();
@@ -172,6 +173,26 @@ public class ConfigStoreTests
         Assert.Equal(90, config.AlertThreshold);
     }
 
+    [Fact]
+    public void ConfigStore_ThresholdAlertOver100_FallsBack()
+    {
+        var json = "{\"warnThreshold\": 50, \"alertThreshold\": 200}";
+        File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
+        var config = new ConfigStore(_tempDir).Load();
+        Assert.Equal(70, config.WarnThreshold);
+        Assert.Equal(90, config.AlertThreshold);
+    }
+
+    [Fact]
+    public void ConfigStore_ThresholdWarnNegative_FallsBack()
+    {
+        var json = "{\"warnThreshold\": -5, \"alertThreshold\": 80}";
+        File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
+        var config = new ConfigStore(_tempDir).Load();
+        Assert.Equal(70, config.WarnThreshold);
+        Assert.Equal(90, config.AlertThreshold);
+    }
+
     // selectedLimits validation
     [Fact]
     public void ConfigStore_SelectedLimitsUnknownDropped()
@@ -179,8 +200,7 @@ public class ConfigStoreTests
         var json = "{\"selectedLimits\": [\"Session5h\", \"NonExistent\"]}";
         File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
         var config = new ConfigStore(_tempDir).Load();
-        Assert.Contains("Session5h", config.SelectedLimits);
-        Assert.DoesNotContain("NonExistent", config.SelectedLimits);
+        Assert.Single(config.SelectedLimits, k => k == LimitKind.Session5h);
     }
 
     [Fact]
@@ -189,9 +209,9 @@ public class ConfigStoreTests
         var json = "{\"selectedLimits\": [\"Session5h\", \"Session5h\", \"WeeklyAll\"]}";
         File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
         var config = new ConfigStore(_tempDir).Load();
+        Assert.Single(config.SelectedLimits, LimitKind.Session5h);
+        Assert.Single(config.SelectedLimits, LimitKind.WeeklyAll);
         Assert.Equal(2, config.SelectedLimits.Count);
-        Assert.Contains("Session5h", config.SelectedLimits);
-        Assert.Contains("WeeklyAll", config.SelectedLimits);
     }
 
     [Fact]
@@ -200,8 +220,8 @@ public class ConfigStoreTests
         var json = "{\"selectedLimits\": [\"NonExistent\", \"AlsoUnknown\"]}";
         File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
         var config = new ConfigStore(_tempDir).Load();
-        Assert.Contains("Session5h", config.SelectedLimits);
-        Assert.Contains("WeeklyAll", config.SelectedLimits);
+        Assert.Contains(LimitKind.Session5h, config.SelectedLimits);
+        Assert.Contains(LimitKind.WeeklyAll, config.SelectedLimits);
     }
 
     [Fact]
@@ -210,8 +230,7 @@ public class ConfigStoreTests
         var json = "{\"selectedLimits\": [\"WeeklyOpus\"]}";
         File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
         var config = new ConfigStore(_tempDir).Load();
-        Assert.Equal(1, config.SelectedLimits.Count);
-        Assert.Contains("WeeklyOpus", config.SelectedLimits);
+        Assert.Single(config.SelectedLimits, LimitKind.WeeklyOpus);
     }
 
     // Colors validation
@@ -254,7 +273,7 @@ public class ConfigStoreTests
     {
         File.WriteAllText(Path.Combine(_tempDir, "config.json"), "not valid json{{{");
         var config = new ConfigStore(_tempDir).Load();
-        Assert.Contains("Session5h", config.SelectedLimits);
+        Assert.Contains(LimitKind.Session5h, config.SelectedLimits);
         Assert.Equal(180, config.PollIntervalSeconds);
         Assert.Equal(70, config.WarnThreshold);
         Assert.Equal(90, config.AlertThreshold);
@@ -297,6 +316,9 @@ public class ConfigStoreTests
         }";
         File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
         var config = new ConfigStore(_tempDir).Load();
+        Assert.Single(config.SelectedLimits, LimitKind.Session5h);
+        Assert.Single(config.SelectedLimits, LimitKind.WeeklyAll);
+        Assert.Single(config.SelectedLimits, LimitKind.WeeklySonnet);
         Assert.Equal(3, config.SelectedLimits.Count);
         Assert.True(config.ShowNumberInRing);
         Assert.True(config.AlertsEnabled);

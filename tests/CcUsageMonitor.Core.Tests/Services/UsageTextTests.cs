@@ -14,13 +14,13 @@ public class UsageTextTests
     private static DateTimeOffset UpdatedAt => new(2026, 6, 18, 14, 5, 0, LocalOffset);
 
     [Theory]
-    [InlineData(16, 5, 0, 2, 0, "2h 0m")]       // exact hour
-    [InlineData(15, 35, 45, 1, 30, "1h 30m")]   // floor exercised (45s dropped)
-    [InlineData(14, 52, 0, 0, 47, "47m")]        // sub-hour
-    [InlineData(14, 5, 30, 0, 0, "0m")]          // sub-minute: 0 < remaining < 1m → "0m"
-    [InlineData(14, 5, 0, -1, -1, "resetting…")] // ResetsAt == now → sentinel
-    [InlineData(13, 0, 0, -1, -1, "resetting…")] // past reset → sentinel
-    public void UsageText_Countdown_ResetsAt_Correct(int rH, int rM, int rS, int expectedH, int expectedM, string expected)
+    [InlineData(16, 5, 0, "2h 0m")]       // exact hour
+    [InlineData(15, 35, 45, "1h 30m")]   // floor exercised (45s dropped)
+    [InlineData(14, 52, 0, "47m")]        // sub-hour
+    [InlineData(14, 5, 30, "0m")]          // sub-minute: 0 < remaining < 1m → "0m"
+    [InlineData(14, 5, 0, "resetting…")] // ResetsAt == now → sentinel
+    [InlineData(13, 0, 0, "resetting…")] // past reset → sentinel
+    public void UsageText_Countdown_ResetsAt_Correct(int rH, int rM, int rS, string expected)
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, rH, rM, rS, LocalOffset);
         var countdown = UsageText.Countdown(resetsAt, Now);

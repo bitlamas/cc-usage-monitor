@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CcUsageMonitor.Core.Models;
 
 namespace CcUsageMonitor.Core.Services;
 
@@ -36,44 +36,66 @@ public class ConfigStore : IConfigStore
     public AppConfig Load()
     {
         if (!File.Exists(_configPath))
-            return SaveFirstRunDefaults();
+            return _saveFirstRunDefaults();
 
         try
         {
-            var raw = JsonSerializer.Deserialize<RawConfig>(File.ReadAllText(_configPath), JsonOptions);
-            return Sanitize(raw ?? new RawConfig());
+            var raw = JsonSerializer.Deserialize<JsonConfig>(File.ReadAllText(_configPath), JsonOptions);
+            return Sanitize(raw ?? new JsonConfig());
         }
         catch
         {
             // Corrupt JSON → defaults
-            return Sanitize(new RawConfig());
+            return Sanitize(new JsonConfig());
         }
+    }
+
+    // Rename to avoid conflict with Save
+    private AppConfig _saveFirstRunDefaults()
+    {
+        var defaults = Sanitize(new JsonConfig());
+        Save(defaults);
+        return defaults;
     }
 
     public void Save(AppConfig config)
     {
         var dir = Path.GetDirectoryName(_configPath)!;
         Directory.CreateDirectory(dir);
-        File.WriteAllText(_configPath, JsonSerializer.Serialize(config, JsonOptions));
+        var json = JsonSerializer.Serialize(ToJson(config), JsonOptions);
+        File.WriteAllText(_configPath, json);
     }
 
-    private AppConfig SaveFirstRunDefaults()
+    private static JsonConfig ToJson(AppConfig config)
     {
-        var defaults = Sanitize(new RawConfig());
-        Save(defaults);
-        return defaults;
+        var selectedLimitsNames = new List<string>(config.SelectedLimits.Count);
+        foreach (var kind in config.SelectedLimits)
+            selectedLimitsNames.Add(kind.ToString());
+
+        var pollElement = System.Text.Json.JsonSerializer.SerializeToElement(config.PollIntervalSeconds);
+        var colors = config.Colors != null ? new Dictionary<string, string>(config.Colors) : null;
+
+        return new JsonConfig
+        {
+            SelectedLimits = selectedLimitsNames,
+            ShowNumberInRing = config.ShowNumberInRing,
+            AlertsEnabled = config.AlertsEnabled,
+            AlertThreshold = config.AlertThreshold,
+            WarnThreshold = config.WarnThreshold,
+            PollIntervalSeconds = pollElement,
+            StartAtLogin = config.StartAtLogin,
+            Colors = colors
+        };
     }
 
-    private static AppConfig Sanitize(RawConfig raw)
+    private static AppConfig Sanitize(JsonConfig raw)
     {
         var selectedLimits = SanitizeSelectedLimits(raw.SelectedLimits);
         var showNumber = raw.ShowNumberInRing is true;
         var alertsEnabled = raw.AlertsEnabled != false;  // default true
 
-        // Threshold validation on the FINAL merged pair
-        var warn = SanitizeWarnThreshold(raw.WarnThreshold);
-        var alert = SanitizeAlertThreshold(raw.AlertThreshold);
-        ValidateThresholds(ref warn, ref alert);
+        // Threshold validation: merge defaults first, then check the pair (spec §4.7)
+        (var warn, var alert) = ValidateThresholds(raw.WarnThreshold, raw.AlertThreshold);
 
         var pollInterval = SanitizePollInterval(raw.PollIntervalSeconds);
         var startAtLogin = raw.StartAtLogin != false;  // default true
@@ -82,46 +104,38 @@ public class ConfigStore : IConfigStore
         return new AppConfig(selectedLimits, showNumber, alertsEnabled, alert, warn, pollInterval, startAtLogin, colors);
     }
 
-    private static List<string> SanitizeSelectedLimits(IReadOnlyList<string>? raw)
+    private static List<LimitKind> SanitizeSelectedLimits(IReadOnlyList<string>? raw)
     {
-        if (raw == null || raw.Count == 0)
-            return new List<string> { "Session5h", "WeeklyAll" };
+        var defaults = new List<LimitKind> { LimitKind.Session5h, LimitKind.WeeklyAll };
 
-        var valid = new HashSet<string> { "Session5h", "WeeklyAll", "WeeklySonnet", "WeeklyOpus" };
+        if (raw == null || raw.Count == 0)
+            return defaults;
+
+        var validNames = new HashSet<string> { "Session5h", "WeeklyAll", "WeeklySonnet", "WeeklyOpus" };
         var seen = new HashSet<string>();
-        var result = new List<string>();
+        var result = new List<LimitKind>();
 
         foreach (var item in raw)
         {
-            if (valid.Contains(item) && seen.Add(item))
-                result.Add(item);
+            if (validNames.Contains(item) && seen.Add(item))
+                result.Add((LimitKind)Enum.Parse(typeof(LimitKind), item));
         }
 
-        return result.Count > 0 ? result : new List<string> { "Session5h", "WeeklyAll" };
+        return result.Count > 0 ? result : defaults;
     }
 
-    private static int SanitizeWarnThreshold(int? raw)
+    private static (int warn, int alert) ValidateThresholds(int? rawWarn, int? rawAlert)
     {
-        if (raw is >= 0 and <= 100)
-            return raw.Value;
-        return 70; // default
-    }
-
-    private static int SanitizeAlertThreshold(int? raw)
-    {
-        if (raw is >= 0 and <= 100)
-            return raw.Value;
-        return 90; // default
-    }
-
-    private static void ValidateThresholds(ref int warn, ref int alert)
-    {
-        // Enforce 0 <= warn < alert <= 100 on the final merged pair
-        if (warn >= alert || warn < 0 || alert > 100)
+        // Merge defaults first, THEN check the FULL spec condition.
+        // Both fall back if the relationship OR range is violated (spec §4.7).
+        int warn  = rawWarn  ?? 70;
+        int alert = rawAlert ?? 90;
+        if (!(0 <= warn && warn < alert && alert <= 100))
         {
-            warn = 70;
+            warn  = 70;
             alert = 90;
         }
+        return (warn, alert);
     }
 
     private static int SanitizePollInterval(JsonElement? raw)
@@ -161,8 +175,8 @@ public class ConfigStore : IConfigStore
         return result;
     }
 
-    // Raw deserialized config (pre-sanitization)
-    private class RawConfig
+    // Raw deserialized config (JSON types for deserialization)
+    private class JsonConfig
     {
         [JsonPropertyName("selectedLimits")]
         public IReadOnlyList<string>? SelectedLimits { get; set; }

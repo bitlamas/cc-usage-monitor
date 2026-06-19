@@ -1,8 +1,10 @@
+using CcUsageMonitor.Core.Models;
+
 namespace CcUsageMonitor.Core.Services;
 
 /// <summary>Persisted application configuration.</summary>
 public record AppConfig(
-    IReadOnlyList<string> SelectedLimits,
+    IReadOnlyList<LimitKind> SelectedLimits,
     bool ShowNumberInRing,
     bool AlertsEnabled,
     int AlertThreshold,

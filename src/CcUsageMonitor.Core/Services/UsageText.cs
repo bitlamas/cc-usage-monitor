@@ -98,7 +98,7 @@ public static class UsageText
     public static string ErrorTooltip(ErrorKind kind) => kind switch
     {
         ErrorKind.NotLoggedIn => "Not logged in to Claude Code",
-        ErrorKind.CliRequiredForReauth => "Claude Code CLI is required for re-auth",
+        ErrorKind.CliRequiredForReauth => "Claude Code CLI required for re-auth",
         ErrorKind.NetworkError => "Network error — data may be stale",
         _ => "Unknown error"
     };
