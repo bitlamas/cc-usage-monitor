@@ -177,9 +177,7 @@ public class UsageTextTests
     [Fact]
     public void UsageText_ErrorTooltip_CliRequiredForReauth()
     {
-        var result = UsageText.ErrorTooltip(ErrorKind.CliRequiredForReauth);
-        Assert.Contains("Claude Code CLI", result);
-        Assert.Contains("re-auth", result);
+        Assert.Equal("Claude Code CLI required for re-auth", UsageText.ErrorTooltip(ErrorKind.CliRequiredForReauth));
     }
 
     // Edge: null-pct + reset-now sentinel (independent combinations)
