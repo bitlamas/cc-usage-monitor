@@ -1,9 +1,12 @@
 {
-  "stryker": {
+  "stryker-config": {
     "reporters": ["progress", "html"],
-    "mutate": ["**/*.cs"],
-    "exclude": ["**/*Tests*.cs", "**/*.axaml.cs"],
     "test-projects": ["tests/CcUsageMonitor.Core.Tests/CcUsageMonitor.Core.Tests.csproj"],
-    "verbosity": "info"
+    "verbosity": "info",
+    "thresholds": {
+      "high": 80,
+      "low": 60,
+      "break": 50
+    }
   }
 }
