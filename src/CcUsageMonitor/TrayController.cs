@@ -34,6 +34,7 @@ public class TrayController : IDisposable
     private readonly Dictionary<LimitKind, NativeMenuItem> _limitMenuItems = new();
     private DetailFlyout? _flyout;
     private readonly object _lock = new();
+    private UsageSnapshot? _latestSnapshot;
 
     public TrayController(
         Poller poller,
@@ -76,6 +77,7 @@ public class TrayController : IDisposable
     /// </summary>
     private void OnSnapshot(UsageSnapshot snapshot)
     {
+        _latestSnapshot = snapshot;
         // Poller fires on a background thread; marshal all tray UI updates to the UI thread.
         Dispatcher.UIThread.Post(() =>
         {
@@ -141,8 +143,12 @@ public class TrayController : IDisposable
     {
         var menu = new NativeMenu();
 
-        // LimitKind checkable items
-        foreach (LimitKind kind in Enum.GetValues(typeof(LimitKind)))
+        // LimitKind checkable items — in config.SelectedLimits order first, then remaining
+        var selected = config.SelectedLimits.Distinct().ToList();
+        var allKinds = Enum.GetValues(typeof(LimitKind)).Cast<LimitKind>().ToList();
+        var remaining = allKinds.Except(selected).ToList();
+
+        foreach (var kind in selected.Concat(remaining))
         {
             var item = new NativeMenuItem
             {
@@ -302,17 +308,32 @@ public class TrayController : IDisposable
     }
 
     /// <summary>
-    /// Disables the checkable menu item for the sole remaining selected limit (min-one rule).
+    /// Disables checkable menu items for: (a) the sole remaining selected limit (min-one rule),
+    /// and (b) limits whose latest snapshot shows Present = false (not yet returned by the API).
+    /// Per spec §5: a limit with Present = false has its context-menu item disabled (greyed).
     /// Per spec §6.4: when exactly one limit is selected, that limit cannot be unchecked.
     /// </summary>
     private void UpdateLimitMenuItems()
     {
         var config = _configStore.Load();
         var count = config.SelectedLimits.Count;
+        var presentSnapshot = _latestSnapshot;
+
         foreach (var kvp in _limitMenuItems)
         {
             var kind = kvp.Key;
             var item = kvp.Value;
+
+            // Rule (a): Present = false → disabled (not yet returned by the API)
+            bool isPresent = presentSnapshot?.Limits.TryGetValue(kind, out var state) == true
+                             && state.Present;
+            if (!isPresent)
+            {
+                item.IsEnabled = false;
+                continue;
+            }
+
+            // Rule (b): min-one rule — sole remaining selected limit cannot be unchecked
             if (count <= 1 && config.SelectedLimits.Contains(kind))
             {
                 item.IsEnabled = false;

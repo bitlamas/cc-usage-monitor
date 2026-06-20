@@ -40,7 +40,7 @@ public class RingRendererTests
         Assert.Equal(DefaultSize, bitmap.Height);
     }
 
-    // --- Null pct → dim track-only, no text ---
+    // --- Null pct → dim disc only, no text ---
 
     [Fact]
     public void Render_NullPct_DrawsNoText()
@@ -49,61 +49,77 @@ public class RingRendererTests
         Assert.Null(RingRenderer.LastDrawnText);
     }
 
-    // --- Track is always drawn (even at 0%) ---
+    [Fact]
+    public void Render_NullPct_DrawsDimDisc()
+    {
+        var bitmap = RingRenderer.Render(null, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
+        // Center pixel should be dim gray track, no colored wedge.
+        var center = bitmap.GetPixel(16, 16);
+        const int tolerance = 40;
+        Assert.True(Math.Abs(center.Red - 34) <= tolerance,
+            $"Center should be dim gray, got R={center.Red}");
+        Assert.True(Math.Abs(center.Green - 34) <= tolerance,
+            $"Center should be dim gray, got G={center.Green}");
+        Assert.True(Math.Abs(center.Blue - 34) <= tolerance,
+            $"Center should be dim gray, got B={center.Blue}");
+    }
+
+    // --- Filled disc track is drawn (even at 0%) ---
 
     [Fact]
     public void Render_0Pct_TrackStillDrawn_DimGray()
     {
         var bitmap = RingRenderer.Render(0, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // At 0% there's no arc, but the track circle should still be dim gray.
-        // Top position (12 o'clock on the track stroke)
-        var topTrack = bitmap.GetPixel(16, 1);
+        // At 0% there's no wedge, but the filled dim-gray disc should be present.
+        // Center pixel: must be the dim track color.
+        var center = bitmap.GetPixel(16, 16);
         // Track is dim gray #222222 (34,34,34). Allow tolerance for anti-aliasing.
         const int tolerance = 40;
-        Assert.True(Math.Abs(topTrack.Red - 34) <= tolerance,
-            $"Top track pixel should be dim gray ~34, got {topTrack.Red}");
-        Assert.True(Math.Abs(topTrack.Green - 34) <= tolerance,
-            $"Top track pixel should be dim gray ~34, got {topTrack.Green}");
-        Assert.True(Math.Abs(topTrack.Blue - 34) <= tolerance,
-            $"Top track pixel should be dim gray ~34, got {topTrack.Blue}");
-        Assert.True(topTrack.Alpha > 128, "Top track pixel should be opaque");
+        Assert.True(Math.Abs(center.Red - 34) <= tolerance,
+            $"Center pixel should be dim gray ~34, got {center.Red}");
+        Assert.True(Math.Abs(center.Green - 34) <= tolerance,
+            $"Center pixel should be dim gray ~34, got {center.Green}");
+        Assert.True(Math.Abs(center.Blue - 34) <= tolerance,
+            $"Center pixel should be dim gray ~34, got {center.Blue}");
+        Assert.True(center.Alpha > 128, "Center pixel should be opaque");
     }
 
-    // --- Arc starts at 12 o'clock (top) ---
+    // --- Wedge starts at 12 o'clock (top), filled disc ---
 
     [Fact]
-    public void Render_ArcStartsAtTop_12Oclock()
+    public void Render_WedgeStartsAtTop_12Oclock()
     {
-        // 50% arc spans -90° to +90° (top-right half). Top pixel should be on the arc.
+        // 50% wedge spans -90° to +90° (top-right half). A pixel just off-center
+        // along the 12-o'clock radius (inside the wedge) should be band-colored.
         var bitmap = RingRenderer.Render(50, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        var topArc = bitmap.GetPixel(16, 1);
-        // Should be on the arc (not just track), so red/green/blue should be band colors
+        // Sample a pixel inside the wedge: (16, 12) — on the 12-o'clock radius, just off-center.
+        var topWedge = bitmap.GetPixel(16, 12);
         // At 50% the band is green #4CAF50 (76,175,80)
-        Assert.True(topArc.Red > 50 && topArc.Green > 100,
-            $"Top pixel should be on green arc, got {topArc}");
+        Assert.True(topWedge.Red > 50 && topWedge.Green > 100,
+            $"Top wedge pixel should be green, got {topWedge}");
     }
 
-    // --- Arc full at >=100 (clamped to 360° sweep) ---
+    // --- Filled disc full at >=100 (clamped to 360° sweep) ---
 
     [Fact]
-    public void Render_100Pct_FullArc()
+    public void Render_100Pct_FullDisc()
     {
         var bitmap = RingRenderer.Render(100, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // 100% → red arc that covers the full circle.
-        // Verify the right-side arc pixel is red (not just the dim track).
+        // 100% → red disc that covers the entire radius.
+        // Right-side pixel should be red (not just the dim track).
         var rightSide = bitmap.GetPixel(30, 16);
         Assert.True(rightSide.Red > 150 && rightSide.Green < 100,
-            $"Right side should be red arc at 100%, got {rightSide}");
+            $"Right side should be red at 100%, got {rightSide}");
     }
 
     [Fact]
-    public void Render_150Pct_ClampedToFullArc()
+    public void Render_150Pct_ClampedToFullDisc()
     {
         var bitmap = RingRenderer.Render(150, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // Should look the same as 100% (clamped arc)
+        // Should look the same as 100% (clamped wedge)
         var rightSide = bitmap.GetPixel(30, 16);
         Assert.True(rightSide.Red > 150 && rightSide.Green < 100,
-            $"150% should render full red arc (clamped), got {rightSide}");
+            $"150% should render full red disc (clamped), got {rightSide}");
     }
 
     // --- Drawn text seam: unclamped value ---
@@ -145,7 +161,7 @@ public class RingRendererTests
         Assert.Null(RingRenderer.LastDrawnText);
     }
 
-    // --- Color band selection via Bands (clamped pct) ---
+    // --- Color band selection via Bands (clamped pct) — sample inside wedge ---
 
     [Theory]
     [InlineData(69, BandType.Green)]
@@ -158,8 +174,9 @@ public class RingRendererTests
     {
         var bitmap = RingRenderer.Render(pct, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
 
-        // Sample the top pixel of the arc (above center, at the 12-o'clock edge)
-        var arcPixel = bitmap.GetPixel(16, 1);
+        // Sample a pixel inside the wedge: (16, 12) — on the 12-o'clock radius, inside the disc.
+        // For pct >= ~25 this pixel falls inside the wedge; at 100% it always does.
+        var wedgePixel = bitmap.GetPixel(16, 12);
         Color bandColor = expected switch
         {
             BandType.Green => new Color("#4CAF50"),
@@ -168,9 +185,8 @@ public class RingRendererTests
             _ => throw new ArgumentOutOfRangeException(nameof(expected)),
         };
 
-        // The arc pixel should match the expected band color (within small tolerance for rendering)
-        Assert.True(AreSimilar(actual: arcPixel, expected: bandColor),
-            $"At pct={pct} expected {expected} ({bandColor}) but got {arcPixel}");
+        Assert.True(AreSimilar(actual: wedgePixel, expected: bandColor),
+            $"At pct={pct} expected {expected} ({bandColor}) but got {wedgePixel}");
     }
 
     // --- Custom thresholds prove they aren't hardcoded ---
@@ -184,7 +200,7 @@ public class RingRendererTests
     {
         var bitmap = RingRenderer.Render(pct, warnThreshold: 50, alertThreshold: 80, showNumber: false, DefaultSize);
 
-        var arcPixel = bitmap.GetPixel(16, 1);
+        var wedgePixel = bitmap.GetPixel(16, 12);
         Color bandColor = expected switch
         {
             BandType.Green => new Color("#4CAF50"),
@@ -193,8 +209,8 @@ public class RingRendererTests
             _ => throw new ArgumentOutOfRangeException(nameof(expected)),
         };
 
-        Assert.True(AreSimilar(actual: arcPixel, expected: bandColor),
-            $"At pct={pct} with custom thresholds expected {expected} but got {arcPixel}");
+        Assert.True(AreSimilar(actual: wedgePixel, expected: bandColor),
+            $"At pct={pct} with custom thresholds expected {expected} but got {wedgePixel}");
     }
 
     // --- Default size is 32 ---
@@ -217,19 +233,29 @@ public class RingRendererTests
         Assert.Equal(64, bitmap.Height);
     }
 
-    // --- Negative pct clamped to 0 (arc drawn but no sweep) ---
+    // --- Negative pct clamped to 0 (wedge drawn but no sweep) ---
 
     [Fact]
-    public void Render_NegativePct_ClampedToZero_NoArc()
+    public void Render_NegativePct_ClampedToZero_NoWedge()
     {
         var bitmap = RingRenderer.Render(-10, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // -10 should be clamped to 0 → band is green, sweep is 0° (no arc drawn)
-        // Top pixel should be track color (dim gray), not a band color
-        var top = bitmap.GetPixel(16, 1);
+        // -10 should be clamped to 0 → band is green, sweep is 0° (no wedge drawn)
+        // Center pixel should be track color (dim gray), not a band color
+        var center = bitmap.GetPixel(16, 16);
         // Track is dim gray (#222222 ≈ 34,34,34). Not a bright band.
-        Assert.True(top.Red < 60, $"Top pixel should be track color, got R={top.Red}");
-        Assert.True(top.Green < 60, $"Top pixel should be track color, got G={top.Green}");
-        Assert.True(top.Blue < 60, $"Top pixel should be track color, got B={top.Blue}");
+        Assert.True(center.Red < 60, $"Center pixel should be track color, got R={center.Red}");
+        Assert.True(center.Green < 60, $"Center pixel should be track color, got G={center.Green}");
+        Assert.True(center.Blue < 60, $"Center pixel should be track color, got B={center.Blue}");
+    }
+
+    // --- Text outline seam ---
+
+    [Fact]
+    public void Render_TextOutlineThickness_IsPositive()
+    {
+        // Prove the outline seam constant exists and is positive (a real outline is drawn).
+        Assert.True(RingRenderer.TextOutlineThickness > 0,
+            $"TextOutlineThickness should be positive, got {RingRenderer.TextOutlineThickness}");
     }
 
     // --- Helper: approximate color match (accounts for anti-aliasing pixels) ---

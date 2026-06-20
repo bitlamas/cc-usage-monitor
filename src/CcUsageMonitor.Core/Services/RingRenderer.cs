@@ -24,6 +24,12 @@ public static class RingRenderer
     /// <param name="showNumber">Whether to draw the percentage number inside the ring.</param>
     /// <param name="sizePx">Bitmap size in logical pixels (default 32).</param>
     /// <returns>A 32×32 (or sizePx×sizePx) PNG-encoded SKBitmap.</returns>
+
+    /// <summary>
+    /// Outline thickness (in px) for the dark halo drawn behind the % number.
+    /// </summary>
+    public const int TextOutlineThickness = 1;
+
     public static SKBitmap Render(int? pct, int warnThreshold, int alertThreshold, bool showNumber, int sizePx = 32)
     {
         // Track the last drawn text for the seam
@@ -32,26 +38,20 @@ public static class RingRenderer
         var half = sizePx / 2f;
         var radius = half - 1f; // 1px margin from edge
         var rect = new SKRect(half - radius, half - radius, half + radius, half + radius);
-        var strokeWidth = 3f;
-        var halfStroke = strokeWidth / 2f;
-        var adjustedRect = new SKRect(half - radius + halfStroke, half - radius + halfStroke,
-                                       half + radius - halfStroke, half + radius - halfStroke);
 
         var bitmap = new SKBitmap(sizePx, sizePx, SKColorType.Rgba8888, SKAlphaType.Premul);
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Transparent);
 
-        // --- Track (dim gray background circle) ---
+        // --- Track (filled dim-gray disc) ---
         using var trackPaint = new SKPaint
         {
             Color = new SKColor(0x22, 0x22, 0x22),
-            StrokeWidth = strokeWidth,
-            IsStroke = true,
-            StrokeCap = SKStrokeCap.Square
+            IsStroke = false
         };
         canvas.DrawCircle(half, half, radius, trackPaint);
 
-        // --- Arc (foreground, colored by band) ---
+        // --- Wedge (filled pie slice, band-colored) ---
         if (pct is not null)
         {
             var clamped = Math.Max(0, Math.Min(100, pct.Value));
@@ -61,18 +61,16 @@ public static class RingRenderer
             {
                 var colorHex = colorPalette.GetColor(band);
                 var colorArgb = HexToArgb(colorHex);
-                using var arcPaint = new SKPaint
+                using var wedgePaint = new SKPaint
                 {
                     Color = new SKColor(colorArgb),
-                    StrokeWidth = strokeWidth,
-                    IsStroke = true,
-                    StrokeCap = SKStrokeCap.Square
+                    IsStroke = false
                 };
 
-                // Arc sweep: clamped pct → 0° to 360° (full circle at >=100%)
+                // Wedge sweep: clamped pct → 0° to 360° (full disc at >=100%)
                 var sweepAngle = clamped / 100f * 360f;
-                // Start at -90° (12 o'clock), sweep clockwise
-                canvas.DrawArc(adjustedRect, -90f, sweepAngle, false, arcPaint);
+                // Start at -90° (12 o'clock), sweep clockwise, useCenter=true for filled pie
+                canvas.DrawArc(rect, -90f, sweepAngle, true, wedgePaint);
             }
 
             // --- Number (only when showNumber is true and pct is not null) ---
@@ -81,18 +79,34 @@ public static class RingRenderer
                 var text = pct.Value.ToString();
                 LastDrawnText = text;
 
-                using var textPaint = new SKPaint
+                var textPaint = new SKPaint
                 {
                     TextSize = 14f,
                     IsStroke = false,
                     Color = new SKColor(0xFF, 0xFF, 0xFF)
                 };
                 textPaint.TextAlign = SKTextAlign.Center;
-                // Center text horizontally and vertically in the bitmap
-                canvas.DrawText(text, half, half + 5f, textPaint);
+
+                // Vertically center via font metrics: baselineY = centerY - (Ascent + Descent) / 2
+                var metrics = textPaint.FontMetrics;
+                var baselineY = half - (metrics.Ascent + metrics.Descent) / 2f;
+
+                // Draw a dark semi-transparent outline behind the white text
+                using var outlinePaint = new SKPaint
+                {
+                    TextSize = textPaint.TextSize,
+                    IsStroke = true,
+                    StrokeWidth = TextOutlineThickness,
+                    Color = new SKColor(0x00, 0x00, 0x00, 0xCC)
+                };
+                outlinePaint.TextAlign = SKTextAlign.Center;
+                canvas.DrawText(text, half, baselineY, outlinePaint);
+
+                // White text on top
+                canvas.DrawText(text, half, baselineY, textPaint);
             }
         }
-        // else: null pct → dim track-only (no arc, no number)
+        // else: null pct → dim disc only (no wedge, no number)
 
         return bitmap;
     }
