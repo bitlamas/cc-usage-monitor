@@ -83,16 +83,9 @@ public class SystemNotificationSink : INotificationSink
 {
     public bool TryShow(string title, string body)
     {
-        try
-        {
-            // On Windows, use PowerShell toast notification
-            // On macOS, use osascript
-            // For v1, a no-op that returns true (alerts fire but don't show)
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        // v1.1: real OS toast (PowerShell on Windows, osascript on macOS, etc.)
+        // Until then, return false — AlertManager handles an unavailable sink
+        // correctly (records as fired, no re-fire, nothing shown).
+        return false;
     }
 }

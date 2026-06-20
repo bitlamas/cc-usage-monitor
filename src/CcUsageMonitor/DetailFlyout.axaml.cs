@@ -26,6 +26,15 @@ public partial class DetailFlyout : Window
 {
     private readonly Poller _poller;
     private readonly IConfigStore _configStore;
+    private readonly Action<UsageSnapshot> _snapshotHandler;
+
+    // Parameterless ctor used only by the Avalonia XAML loader.
+    // This silences AVLN3001 ("no public constructor").
+    // The _poller/_configStore/_snapshotHandler fields are assigned by the DI ctor;
+    // the parameterless ctor is a no-op placeholder for the XAML loader.
+    #pragma warning disable CS8618
+    public DetailFlyout() { }
+    #pragma warning restore CS8618
 
     public DetailFlyout(Poller poller, IConfigStore configStore)
     {
@@ -33,6 +42,9 @@ public partial class DetailFlyout : Window
         _configStore = configStore;
 
         InitializeComponent();
+
+        // Store the snapshot handler so we can subscribe/unsubscribe the same delegate
+        _snapshotHandler = _ => { if (_poller.Current != null) UpdateDisplay(_poller.Current); };
 
         // Dismiss on focus loss — close when another window gets focus
         this.LostFocus += (_, _) =>
@@ -43,7 +55,7 @@ public partial class DetailFlyout : Window
         };
 
         // Subscribe to poller snapshots for live updates
-        _poller.SnapshotPublished += _ => { if (_poller.Current != null) UpdateDisplay(_poller.Current); };
+        _poller.SnapshotPublished += _snapshotHandler;
 
         // Initial display
         if (_poller.Current != null)
@@ -63,13 +75,13 @@ public partial class DetailFlyout : Window
                 var label = GetLimitLabel(kind);
                 var pctDisplay = state.Pct.HasValue ? $"{state.Pct}%" : "--%";
                 var resetDisplay = UsageText.Countdown(state.ResetsAt, now);
-                var updatedDisplay = $"Updated {snapshot.UpdatedAt:HH:mm}";
+                var updatedDisplay = $"Updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}";
 
                 items.Add(new FlyoutItem
                 {
                     Label = label,
                     PctDisplay = pctDisplay,
-                    ResetDisplay = resetDisplay,
+                    ResetDisplay = resetDisplay!,
                     UpdatedDisplay = updatedDisplay
                 });
             }
@@ -81,20 +93,20 @@ public partial class DetailFlyout : Window
                     Label = label,
                     PctDisplay = "--%",
                     ResetDisplay = "Not available",
-                    UpdatedDisplay = $"Updated {snapshot.UpdatedAt:HH:mm}"
+                    UpdatedDisplay = $"Updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}"
                 });
             }
         }
 
         // Bind to ItemsControl
-        LimitsList.ItemsSource = items;
+        LimitsList!.ItemsSource = items;
 
         // Show stale indicator
-        StaleText.IsVisible = snapshot.Stale;
+        StaleText!.IsVisible = snapshot.Stale;
         if (snapshot.Stale)
         {
             var reason = string.IsNullOrEmpty(snapshot.Error) ? "Data may be stale" : $"Stale: {snapshot.Error}";
-            StaleText.Text = reason;
+            StaleText!.Text = reason!;
         }
     }
 
@@ -109,7 +121,7 @@ public partial class DetailFlyout : Window
 
     protected override void OnClosed(EventArgs e)
     {
-        _poller.SnapshotPublished -= _ => UpdateDisplay(_poller.Current!);
+        _poller.SnapshotPublished -= _snapshotHandler;
         base.OnClosed(e);
     }
 }

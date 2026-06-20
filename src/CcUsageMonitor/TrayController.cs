@@ -30,6 +30,7 @@ public class TrayController : IDisposable
     private readonly CancellationTokenSource _appCts = new();
 
     private readonly Dictionary<LimitKind, TrayIcon> _trayIcons = new();
+    private readonly Dictionary<LimitKind, NativeMenuItem> _limitMenuItems = new();
     private DetailFlyout? _flyout;
     private readonly object _lock = new();
 
@@ -75,6 +76,7 @@ public class TrayController : IDisposable
     private void OnSnapshot(UsageSnapshot snapshot)
     {
         RenderSnapshot(snapshot);
+        UpdateLimitMenuItems();
     }
 
     private void RenderSnapshot(UsageSnapshot snapshot)
@@ -146,6 +148,7 @@ public class TrayController : IDisposable
             };
             item.Click += (_, _) => ToggleLimit(kind);
             menu.Items.Add(item);
+            _limitMenuItems[kind] = item;
         }
 
         menu.Items.Add(new NativeMenuItemSeparator());
@@ -226,7 +229,7 @@ public class TrayController : IDisposable
                     _trayIcons[kind] = trayIcon;
 
                                     // Register with Avalonia tray icons collection
-                    var icons = TrayIcon.GetIcons(Application.Current);
+                    var icons = TrayIcon.GetIcons(Application.Current!);
                     icons?.Add(trayIcon);
                 }
             }
@@ -237,7 +240,7 @@ public class TrayController : IDisposable
             {
                 if (_trayIcons.TryGetValue(kind, out var ti))
                 {
-                    TrayIcon.GetIcons(Application.Current)?.Remove(ti);
+                    TrayIcon.GetIcons(Application.Current!)?.Remove(ti);
                     ti.Dispose();
                     _trayIcons.Remove(kind);
                 }
@@ -290,6 +293,30 @@ public class TrayController : IDisposable
 
         _configStore.Save(newConfig);
         SyncIcons(newConfig);
+        UpdateLimitMenuItems();
+    }
+
+    /// <summary>
+    /// Disables the checkable menu item for the sole remaining selected limit (min-one rule).
+    /// Per spec §6.4: when exactly one limit is selected, that limit cannot be unchecked.
+    /// </summary>
+    private void UpdateLimitMenuItems()
+    {
+        var config = _configStore.Load();
+        var count = config.SelectedLimits.Count;
+        foreach (var kvp in _limitMenuItems)
+        {
+            var kind = kvp.Key;
+            var item = kvp.Value;
+            if (count <= 1 && config.SelectedLimits.Contains(kind))
+            {
+                item.IsEnabled = false;
+            }
+            else
+            {
+                item.IsEnabled = true;
+            }
+        }
     }
 
     private void ToggleShowNumber()
@@ -409,7 +436,7 @@ public class TrayController : IDisposable
         {
             foreach (var kvp in _trayIcons)
             {
-                TrayIcon.GetIcons(Application.Current)?.Remove(kvp.Value);
+                TrayIcon.GetIcons(Application.Current!)?.Remove(kvp.Value);
                 kvp.Value.Dispose();
             }
             _trayIcons.Clear();
