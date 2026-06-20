@@ -50,38 +50,26 @@ public class RingRendererTests
     }
 
     [Fact]
-    public void Render_NullPct_DrawsDimDisc()
+    public void Render_NullPct_DrawsTransparentDisc()
     {
         var bitmap = RingRenderer.Render(null, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // Center pixel should be dim gray track, no colored wedge.
+        // Center pixel should be transparent (no wedge, transparent track).
         var center = bitmap.GetPixel(16, 16);
-        const int tolerance = 40;
-        Assert.True(Math.Abs(center.Red - 34) <= tolerance,
-            $"Center should be dim gray, got R={center.Red}");
-        Assert.True(Math.Abs(center.Green - 34) <= tolerance,
-            $"Center should be dim gray, got G={center.Green}");
-        Assert.True(Math.Abs(center.Blue - 34) <= tolerance,
-            $"Center should be dim gray, got B={center.Blue}");
+        Assert.True(center.Alpha < 10,
+            $"Center should be transparent, got alpha={center.Alpha}");
     }
 
     // --- Filled disc track is drawn (even at 0%) ---
 
     [Fact]
-    public void Render_0Pct_TrackStillDrawn_DimGray()
+    public void Render_0Pct_TrackIsTransparent()
     {
         var bitmap = RingRenderer.Render(0, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // At 0% there's no wedge, but the filled dim-gray disc should be present.
-        // Center pixel: must be the dim track color.
+        // At 0% there's no wedge, and the track is transparent.
+        // Center pixel should be transparent.
         var center = bitmap.GetPixel(16, 16);
-        // Track is dim gray #222222 (34,34,34). Allow tolerance for anti-aliasing.
-        const int tolerance = 40;
-        Assert.True(Math.Abs(center.Red - 34) <= tolerance,
-            $"Center pixel should be dim gray ~34, got {center.Red}");
-        Assert.True(Math.Abs(center.Green - 34) <= tolerance,
-            $"Center pixel should be dim gray ~34, got {center.Green}");
-        Assert.True(Math.Abs(center.Blue - 34) <= tolerance,
-            $"Center pixel should be dim gray ~34, got {center.Blue}");
-        Assert.True(center.Alpha > 128, "Center pixel should be opaque");
+        Assert.True(center.Alpha < 10,
+            $"Center should be transparent, got alpha={center.Alpha}");
     }
 
     // --- Wedge starts at 12 o'clock (top), filled disc ---
@@ -240,12 +228,9 @@ public class RingRendererTests
     {
         var bitmap = RingRenderer.Render(-10, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
         // -10 should be clamped to 0 → band is green, sweep is 0° (no wedge drawn)
-        // Center pixel should be track color (dim gray), not a band color
+        // Center pixel should be transparent (no wedge, transparent track).
         var center = bitmap.GetPixel(16, 16);
-        // Track is dim gray (#222222 ≈ 34,34,34). Not a bright band.
-        Assert.True(center.Red < 60, $"Center pixel should be track color, got R={center.Red}");
-        Assert.True(center.Green < 60, $"Center pixel should be track color, got G={center.Green}");
-        Assert.True(center.Blue < 60, $"Center pixel should be track color, got B={center.Blue}");
+        Assert.True(center.Alpha < 10, $"Center should be transparent, got alpha={center.Alpha}");
     }
 
     // --- Text outline seam ---

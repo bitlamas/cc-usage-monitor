@@ -43,10 +43,11 @@ public static class RingRenderer
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Transparent);
 
-        // --- Track (filled dim-gray disc) ---
+        // --- Track (transparent — only the wedge is visible) ---
+        // A transparent disc ensures the bitmap has an opaque alpha fill for composited tray icons.
         using var trackPaint = new SKPaint
         {
-            Color = new SKColor(0x22, 0x22, 0x22),
+            Color = SKColors.Transparent,
             IsStroke = false
         };
         canvas.DrawCircle(half, half, radius, trackPaint);
