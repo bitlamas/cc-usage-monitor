@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using CcUsageMonitor.Core.Models;
 using CcUsageMonitor.Core.Services;
 
@@ -44,15 +45,10 @@ public partial class DetailFlyout : Window
         InitializeComponent();
 
         // Store the snapshot handler so we can subscribe/unsubscribe the same delegate
-        _snapshotHandler = _ => { if (_poller.Current != null) UpdateDisplay(_poller.Current); };
+        _snapshotHandler = _ => Dispatcher.UIThread.Post(() => { if (_poller.Current != null) UpdateDisplay(_poller.Current); });
 
-        // Dismiss on focus loss — close when another window gets focus
-        this.LostFocus += (_, _) =>
-        {
-            // Only close if we lost focus to something outside the flyout
-            if (Owner == null || !Owner.IsVisible)
-                Close();
-        };
+        // Dismiss on focus loss — Deactivated fires when the window loses activation.
+        this.Deactivated += (_, _) => Close();
 
         // Subscribe to poller snapshots for live updates
         _poller.SnapshotPublished += _snapshotHandler;

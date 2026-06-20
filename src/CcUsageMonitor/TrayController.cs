@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using CcUsageMonitor.Core.Models;
 using CcUsageMonitor.Core.Services;
 using SkiaSharp;
@@ -62,8 +63,8 @@ public class TrayController : IDisposable
     public void Initialize()
     {
         var config = _configStore.Load();
-        BuildMenu(config);
-        SyncIcons(config);
+        SyncIcons(config);   // create the icons first...
+        BuildMenu(config);   // ...so BuildMenu can assign the menu to them
         _autostart.IsEnabled(); // warm up
         // Render current snapshot if available
         if (_poller.Current != null)
@@ -75,8 +76,12 @@ public class TrayController : IDisposable
     /// </summary>
     private void OnSnapshot(UsageSnapshot snapshot)
     {
-        RenderSnapshot(snapshot);
-        UpdateLimitMenuItems();
+        // Poller fires on a background thread; marshal all tray UI updates to the UI thread.
+        Dispatcher.UIThread.Post(() =>
+        {
+            RenderSnapshot(snapshot);
+            UpdateLimitMenuItems();
+        });
     }
 
     private void RenderSnapshot(UsageSnapshot snapshot)
