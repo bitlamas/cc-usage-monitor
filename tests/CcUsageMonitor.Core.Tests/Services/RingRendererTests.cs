@@ -40,14 +40,7 @@ public class RingRendererTests
         Assert.Equal(DefaultSize, bitmap.Height);
     }
 
-    // --- Null pct → dim disc only, no text ---
-
-    [Fact]
-    public void Render_NullPct_DrawsNoText()
-    {
-        RingRenderer.Render(null, DefaultWarn, DefaultAlert, showNumber: true, DefaultSize);
-        Assert.Null(RingRenderer.LastDrawnText);
-    }
+    // --- Null pct → transparent disc with outline, no text ---
 
     [Fact]
     public void Render_NullPct_DrawsTransparentDiscWithOutline()
@@ -115,45 +108,6 @@ public class RingRendererTests
         var rightSide = bitmap.GetPixel(30, 16);
         Assert.True(rightSide.Red > 150 && rightSide.Green < 100,
             $"150% should render full red disc (clamped), got {rightSide}");
-    }
-
-    // --- Drawn text seam: unclamped value ---
-
-    [Fact]
-    public void Render_DrawnTextEqualsUnclampedValue_103()
-    {
-        RingRenderer.Render(103, DefaultWarn, DefaultAlert, showNumber: true, DefaultSize);
-        Assert.Equal("103", RingRenderer.LastDrawnText);
-    }
-
-    [Fact]
-    public void Render_DrawnTextEqualsUnclampedValue_0()
-    {
-        RingRenderer.Render(0, DefaultWarn, DefaultAlert, showNumber: true, DefaultSize);
-        Assert.Equal("0", RingRenderer.LastDrawnText);
-    }
-
-    [Fact]
-    public void Render_DrawnTextEqualsUnclampedValue_72()
-    {
-        RingRenderer.Render(72, DefaultWarn, DefaultAlert, showNumber: true, DefaultSize);
-        Assert.Equal("72", RingRenderer.LastDrawnText);
-    }
-
-    // --- Drawn text seam: no text when showNumber=false ---
-
-    [Fact]
-    public void Render_ShowNumberFalse_DrawsNoText()
-    {
-        RingRenderer.Render(95, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        Assert.Null(RingRenderer.LastDrawnText);
-    }
-
-    [Fact]
-    public void Render_NullPct_ShowNumberFalse_DrawsNoText()
-    {
-        RingRenderer.Render(null, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        Assert.Null(RingRenderer.LastDrawnText);
     }
 
     // --- Color band selection via Bands (clamped pct) — sample inside wedge ---
@@ -241,16 +195,6 @@ public class RingRendererTests
         var topEdge = bitmap.GetPixel(16, 1);
         Assert.True(topEdge.Red < 60 && topEdge.Green < 60 && topEdge.Blue < 60,
             $"Top edge should be dark outline, got {topEdge}");
-    }
-
-    // --- Text outline seam ---
-
-    [Fact]
-    public void Render_TextOutlineThickness_IsPositive()
-    {
-        // Prove the outline seam constant exists and is positive (a real outline is drawn).
-        Assert.True(RingRenderer.TextOutlineThickness > 0,
-            $"TextOutlineThickness should be positive, got {RingRenderer.TextOutlineThickness}");
     }
 
     // --- Helper: approximate color match (accounts for anti-aliasing pixels) ---

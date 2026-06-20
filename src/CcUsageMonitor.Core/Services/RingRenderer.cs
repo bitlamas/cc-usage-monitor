@@ -9,32 +9,16 @@ namespace CcUsageMonitor.Core.Services;
 public static class RingRenderer
 {
     /// <summary>
-    /// The exact text string passed to the last DrawText call.
-    /// Null when showNumber was false or pct was null on the last Render call.
-    /// Exposed as a seam so tests can assert the drawn text without rendering to disk.
-    /// </summary>
-    public static string? LastDrawnText { get; private set; }
-
-    /// <summary>
     /// Render a circular progress-ring bitmap for the given percentage.
     /// </summary>
     /// <param name="pct">Percentage (0–∞, clamped to [0,100] for band/sweep; null → dim track-only).</param>
     /// <param name="warnThreshold">Warning threshold (default 70). Band is selected from clamped pct.</param>
     /// <param name="alertThreshold">Alert threshold (default 90). Band is selected from clamped pct.</param>
-    /// <param name="showNumber">Whether to draw the percentage number inside the ring.</param>
+    /// <param name="showNumber">Reserved — no text is drawn inside the ring in v1.</param>
     /// <param name="sizePx">Bitmap size in logical pixels (default 32).</param>
     /// <returns>A 32×32 (or sizePx×sizePx) PNG-encoded SKBitmap.</returns>
-
-    /// <summary>
-    /// Outline thickness (in px) for the dark halo drawn behind the % number.
-    /// </summary>
-    public const int TextOutlineThickness = 1;
-
     public static SKBitmap Render(int? pct, int warnThreshold, int alertThreshold, bool showNumber, int sizePx = 32)
     {
-        // Track the last drawn text for the seam
-        LastDrawnText = null;
-
         var half = sizePx / 2f;
         var radius = half - 1f; // 1px margin from edge
         var rect = new SKRect(half - radius, half - radius, half + radius, half + radius);
@@ -73,41 +57,8 @@ public static class RingRenderer
                 // Start at -90° (12 o'clock), sweep clockwise, useCenter=true for filled pie
                 canvas.DrawArc(rect, -90f, sweepAngle, true, wedgePaint);
             }
-
-            // --- Number (only when showNumber is true and pct is not null) ---
-            if (showNumber)
-            {
-                var text = pct.Value.ToString();
-                LastDrawnText = text;
-
-                var textPaint = new SKPaint
-                {
-                    TextSize = 15f,
-                    IsStroke = false,
-                    Color = new SKColor(0xFF, 0xFF, 0xFF)
-                };
-                textPaint.TextAlign = SKTextAlign.Center;
-
-                // Vertically center via font metrics: baselineY = centerY - (Ascent + Descent) / 2
-                var metrics = textPaint.FontMetrics;
-                var baselineY = half - (metrics.Ascent + metrics.Descent) / 2f;
-
-                // Draw a dark semi-transparent outline behind the white text
-                using var outlinePaint = new SKPaint
-                {
-                    TextSize = textPaint.TextSize,
-                    IsStroke = true,
-                    StrokeWidth = TextOutlineThickness,
-                    Color = new SKColor(0x00, 0x00, 0x00, 0xCC)
-                };
-                outlinePaint.TextAlign = SKTextAlign.Center;
-                canvas.DrawText(text, half, baselineY, outlinePaint);
-
-                // White text on top
-                canvas.DrawText(text, half, baselineY, textPaint);
-            }
         }
-        // else: null pct → dim disc only (no wedge, no number)
+        // else: null pct → transparent disc only (no wedge)
 
         return bitmap;
     }

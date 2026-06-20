@@ -224,12 +224,15 @@ public class TrayController : IDisposable
     private void SyncIcons(AppConfig config)
     {
         // Create icons for selected kinds, remove extras
+        // Icons are registered in enum order (Session5h, WeeklyAll, WeeklySonnet, WeeklyOpus)
+        // so 5-hour appears leftmost in the system tray on Windows.
         lock (_lock)
         {
-            // Add missing icons
-            foreach (var kind in config.SelectedLimits)
+            // Add missing icons — iterate in fixed priority order
+            var priorityOrder = Enum.GetValues(typeof(LimitKind)).Cast<LimitKind>();
+            foreach (var kind in priorityOrder)
             {
-                if (!_trayIcons.ContainsKey(kind))
+                if (config.SelectedLimits.Contains(kind) && !_trayIcons.ContainsKey(kind))
                 {
                     var trayIcon = new TrayIcon
                     {
@@ -239,7 +242,6 @@ public class TrayController : IDisposable
                     trayIcon.Clicked += OnTrayIconClicked;
                     _trayIcons[kind] = trayIcon;
 
-                                    // Register with Avalonia tray icons collection
                     var icons = TrayIcon.GetIcons(Application.Current!);
                     icons?.Add(trayIcon);
                 }

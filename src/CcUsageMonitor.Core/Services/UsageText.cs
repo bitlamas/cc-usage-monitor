@@ -40,38 +40,42 @@ public static class UsageText
     }
 
     /// <summary>
-    /// Per-icon tooltip: "{label} — {pct}% · resets in {countdown} · updated {HH:mm}"
-    /// Per spec §6.2 exact format. Null pct → "--%". Null ResetsAt → omit resets segment.
-    /// ResetsAt <= now → "resetting…" replaces the middle segment.
+    /// Simplified tooltip: "{shortLabel} · {pct}% · {reset info}"
+    /// Short label: "5-hour", "Weekly", "Weekly (Sonnet)", "Weekly (Opus)"
+    /// Reset info: "Resets in ~{countdown}" | "Resetting" | "Updated {HH:mm}"
     /// </summary>
     public static string Tooltip(LimitKind kind, LimitState state, DateTimeOffset updatedAt, DateTimeOffset now)
     {
-        var label = LimitKindMapping.GetLabel(kind);
+        var shortLabel = ShortLabel(kind);
         var pct = state.Pct is null ? "--" : state.Pct.Value.ToString();
         var countdown = Countdown(state.ResetsAt, now);
         var updatedAtStr = updatedAt.ToString("HH:mm");
 
-        var parts = new List<string>();
-        parts.Add($"{label} {EmDash} {pct}%");
-
+        string resetInfo;
         if (countdown is null)
         {
-            // Null ResetsAt → omit the resets segment entirely
+            resetInfo = $"Updated {updatedAtStr}";
         }
         else if (countdown == Resetting)
         {
-            // ResetsAt <= now → sentinel replaces the middle segment
-            parts.Add(Resetting);
+            resetInfo = "Resetting";
         }
         else
         {
-            parts.Add($"resets in {countdown}");
+            resetInfo = $"Resets in ~{countdown}";
         }
 
-        parts.Add($"updated {updatedAtStr}");
-
-        return string.Join($" {MiddleDot} ", parts);
+        return $"{shortLabel} · {pct}% · {resetInfo}";
     }
+
+    private static string ShortLabel(LimitKind kind) => kind switch
+    {
+        LimitKind.Session5h => "5-hour",
+        LimitKind.WeeklyAll => "Weekly",
+        LimitKind.WeeklySonnet => "Weekly (Sonnet)",
+        LimitKind.WeeklyOpus => "Weekly (Opus)",
+        _ => LimitKindMapping.GetLabel(kind)
+    };
 
     /// <summary>Toast title: "Claude usage at {pct}%". Pct is unclamped.</summary>
     public static string ToastTitle(int pct)

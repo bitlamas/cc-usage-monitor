@@ -39,12 +39,9 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 16, 5, 0, LocalOffset);
         var state = new LimitState(42, resetsAt, true);
-        var label = LimitKindMapping.GetLabel(LimitKind.Session5h);
-        var expected = $"5-hour session — 42% · resets in 2h 0m · updated 14:05";
+        var expected = "5-hour · 42% · Resets in ~2h 0m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
-        Assert.Contains("—", actual);
-        Assert.Contains("·", actual);
     }
 
     [Fact]
@@ -52,7 +49,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 15, 35, 45, LocalOffset);
         var state = new LimitState(80, resetsAt, true);
-        var expected = $"5-hour session — 80% · resets in 1h 30m · updated 14:05";
+        var expected = "5-hour · 80% · Resets in ~1h 30m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -62,7 +59,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 14, 52, 0, LocalOffset);
         var state = new LimitState(95, resetsAt, true);
-        var expected = $"5-hour session — 95% · resets in 47m · updated 14:05";
+        var expected = "5-hour · 95% · Resets in ~47m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -72,7 +69,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 14, 5, 30, LocalOffset);
         var state = new LimitState(95, resetsAt, true);
-        var expected = $"5-hour session — 95% · resets in 0m · updated 14:05";
+        var expected = "5-hour · 95% · Resets in ~0m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -82,7 +79,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 14, 5, 0, LocalOffset);
         var state = new LimitState(75, resetsAt, true);
-        var expected = $"Weekly (all models) — 75% · resetting… · updated 14:05";
+        var expected = "Weekly · 75% · Resetting";
         var actual = UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
@@ -93,17 +90,17 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 13, 0, 0, LocalOffset);
         var state = new LimitState(75, resetsAt, true);
-        var expected = $"Weekly (all models) — 75% · resetting… · updated 14:05";
+        var expected = "Weekly · 75% · Resetting";
         var actual = UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
     }
 
     [Fact]
-    public void UsageText_Tooltip_NullReset_SegmentOmitted()
+    public void UsageText_Tooltip_NullReset_ShowsUpdated()
     {
         var state = new LimitState(25, null, true);
-        var expected = $"Weekly (Sonnet) — 25% · updated 14:05";
+        var expected = "Weekly (Sonnet) · 25% · Updated 14:05";
         var actual = UsageText.Tooltip(LimitKind.WeeklySonnet, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
@@ -114,7 +111,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 17, 5, 0, LocalOffset);
         var state = new LimitState(null, resetsAt, true);
-        var expected = $"Weekly (all models) — --% · resets in 3h 0m · updated 14:05";
+        var expected = "Weekly · --% · Resets in ~3h 0m";
         var actual = UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -123,7 +120,7 @@ public class UsageTextTests
     public void UsageText_Tooltip_NullPct_NullReset()
     {
         var state = new LimitState(null, null, true);
-        var expected = $"Weekly (Sonnet) — --% · updated 14:05";
+        var expected = "Weekly (Sonnet) · --% · Updated 14:05";
         var actual = UsageText.Tooltip(LimitKind.WeeklySonnet, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
@@ -186,7 +183,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 14, 5, 0, LocalOffset);
         var state = new LimitState(null, resetsAt, true);
-        var expected = $"Weekly (all models) — --% · resetting… · updated 14:05";
+        var expected = "Weekly · --% · Resetting";
         var actual = UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
