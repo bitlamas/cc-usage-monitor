@@ -164,16 +164,6 @@ public class TrayController : IDisposable
 
         menu.Items.Add(new NativeMenuItemSeparator());
 
-        // Show % inside ring
-        var showNumberItem = new NativeMenuItem
-        {
-            Header = "Show % inside ring",
-            IsChecked = config.ShowNumberInRing,
-            ToggleType = NativeMenuItemToggleType.CheckBox
-        };
-        showNumberItem.Click += (_, _) => ToggleShowNumber();
-        menu.Items.Add(showNumberItem);
-
         // Alerts
         var alertsItem = new NativeMenuItem
         {
@@ -358,21 +348,6 @@ public class TrayController : IDisposable
                 item.IsEnabled = true;
             }
         }
-    }
-
-    private void ToggleShowNumber()
-    {
-        var config = _configStore.Load();
-        var newConfig = new AppConfig(
-            config.SelectedLimits,
-            !config.ShowNumberInRing,
-            config.AlertsEnabled,
-            config.AlertThreshold,
-            config.WarnThreshold,
-            config.PollIntervalSeconds,
-            config.StartAtLogin,
-            config.Colors);
-        _configStore.Save(newConfig);
     }
 
     private void ToggleAlerts()

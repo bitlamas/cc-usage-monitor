@@ -1,66 +1,66 @@
 # cc-usage-monitor
 
-A lightweight, cross-platform **system-tray / menu-bar app** that shows your
-**Claude Code Max** usage limits as **circular progress icons** — so the
-5-hour session limit and weekly limits stay visible at a glance while you work
-in the terminal.
+A lightweight **system-tray app** that shows your **Claude Code** usage limits as
+**filled progress discs** — so the 5-hour session limit and the weekly limits stay
+visible at a glance while you work in the terminal.
 
-Each limit is its own tray icon: a colored ring that fills as you approach the
-limit (green → yellow at 70% → red at 90%), with the exact percentage, reset
-countdown, and last-updated time on hover.
+Each limit is its own tray icon: a disc that fills as you approach the limit
+(green → yellow at 70% → red at 90%). Hover for the exact percentage and reset
+time; left-click for a detail popup; right-click to choose which limits to show.
 
-> **Status:** in design. Windows 11 is the v1 target; the chosen stack keeps
-> macOS and Linux as build targets (validated in a later phase), not a rewrite.
+> **Status:** v1, working on **Windows 11/10**. The stack keeps macOS and Linux as
+> build targets for a later phase.
 
-## Why
+## What it does
 
-When you live in the terminal, the 5-hour session limit and the weekly limits
-are invisible until you hit them. This app keeps them in the corner of your eye:
-a glanceable ring per limit, no window to open, no tab to check.
+- **Two default tray discs:** 5-hour session and Weekly (all models).
+- **Selectable limits** (right-click): 5-hour, Weekly (all), Weekly (Sonnet). Weekly
+  (Opus) appears, disabled, until Anthropic exposes it.
+- **Band colors:** green `< 70%`, yellow `70–89%`, red `>= 90%`.
+- **Hover tooltip:** `5-hour · 42% · Resets in 2h 13m`. Weekly limits that reset more
+  than a day out show the day, e.g. `Weekly · 46% · Resets Sun 10AM`.
+- **Left-click → detail popup** listing every selected limit with a usage bar,
+  percentage, and reset time. Opens next to the tray; dismisses on click-away.
+- **Right-click menu:** toggle limits, alerts, start-at-login, refresh now, open the
+  config file, quit.
+- **Auto-start at login** and a per-user `config.json` for tuning.
 
-## Features (planned v1)
+*Deferred to a later release: the visible toast notification (the alert logic is
+built and tested), and macOS/Linux.*
 
-- Two default tray icons: **5-hour session** and **Weekly (all models)**.
-- Selectable limits: 5-hour session, Weekly (all), Weekly (Sonnet), Weekly (Opus).
-- Color thresholds: green `< 70%`, yellow `70–89%`, red `>= 90%`.
-- Optional percentage rendered inside the ring (off by default).
-- Hover tooltip: exact %, reset countdown, last-updated time.
-- Left-click → detail flyout listing all selected limits.
-- Right-click → context menu (toggle limits, alerts, start-at-login, refresh).
-- One toast alert per limit at `>= 90%`, re-armed after that limit resets.
-- Auto-start at login. Single self-contained binary, no runtime install.
+## How it works — and your credentials
 
-## How it works
+The app reads **your own** Claude Code login — the credentials Claude Code already
+stores on your machine at `~/.claude/.credentials.json`. There is **nothing to
+configure and nothing shared**: each person who runs the app uses their own local
+login and sees their own usage. If you are not logged in to Claude Code, the app
+says so.
 
-Usage data comes from the same OAuth endpoint the Claude Code CLI uses. The app
-reads your **local** Claude Code credentials and **never stores or transmits
-them elsewhere**. When the token expires, it asks the `claude` CLI to refresh
-its own token — the app never handles OAuth client secrets.
+It fetches usage from the same OAuth endpoint the Claude Code CLI uses, and when the
+token expires it asks the `claude` CLI to refresh its own token — the app never
+handles OAuth client secrets, and **never stores or transmits your credentials
+anywhere**. No telemetry, no analytics, no third-party calls.
+
+## Build & run
+
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download).
+
+```bash
+dotnet build
+dotnet run --project src/CcUsageMonitor
+```
+
+A self-contained, single-file Windows binary:
+
+```bash
+dotnet publish src/CcUsageMonitor -c Release -r win-x64 --self-contained
+```
 
 ## Tech
 
-C# / **.NET 8 (LTS)** · **[Avalonia UI](https://avaloniaui.net/)** for the
-cross-platform `TrayIcon` · **[SkiaSharp](https://github.com/mono/SkiaSharp)**
-to render the rings · single self-contained, single-file binary per OS.
-
-## Status & roadmap
-
-This is an active, spec-driven rebuild — **not yet released**.
-
-- [ ] v1 design spec (refined from the validated reference design)
-- [ ] Implementation plan
-- [ ] Core (credentials, usage client, poller, ring renderer, alerts, config)
-- [ ] Tray UI (Avalonia) — Windows 11
-- [ ] Packaging — `win-x64` self-contained binary
-- [ ] macOS / Linux validation
-
-Build and install instructions will land here once v1 is buildable.
-
-## Privacy
-
-Credentials never leave your machine. The app talks only to Anthropic's usage
-endpoint, using the token Claude Code already stores locally. No telemetry, no
-analytics, no third-party calls.
+C# / **.NET 8 (LTS)** · **[Avalonia UI](https://avaloniaui.net/)** `11.2` for the
+cross-platform tray · **[SkiaSharp](https://github.com/mono/SkiaSharp)** `2.88` for
+the disc rendering.
 
 ## License
 

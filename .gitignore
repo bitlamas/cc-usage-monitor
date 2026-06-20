@@ -1,0 +1,20 @@
+# Process docs — local only, never tracked (public repo = code only)
+.claude/
+.pi/
+.shared/
+AGENTS.md
+CLAUDE.md
+
+# .NET build artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Test / coverage / mutation output
+TestResults/
+coverage*.json
+coverage*.xml
+StrykerOutput/
+.stryker-tmp/
