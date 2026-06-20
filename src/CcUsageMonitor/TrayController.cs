@@ -270,11 +270,24 @@ public class TrayController : IDisposable
         }
         else
         {
-            _flyout = new DetailFlyout(_poller, _configStore);
+            _flyout = new DetailFlyout(_poller, _configStore) { Anchor = GetCursorPosition() };
             _flyout.Closed += (_, _) => { lock (_lock) { _flyout = null; } };
             _flyout.Show();
         }
     }
+
+    private static PixelPoint? GetCursorPosition()
+    {
+        if (OperatingSystem.IsWindows() && GetCursorPos(out var p))
+            return new PixelPoint(p.X, p.Y);
+        return null;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out POINT lpPoint);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct POINT { public int X; public int Y; }
 
     private void ToggleLimit(LimitKind kind)
     {

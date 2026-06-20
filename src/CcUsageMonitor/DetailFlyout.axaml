@@ -3,70 +3,61 @@
         xmlns:models="using:CcUsageMonitor"
         x:Class="CcUsageMonitor.DetailFlyout"
         Title="Claude Code Usage"
-        Width="320"
-        MinWidth="280"
-        Height="350"
-        MinHeight="200"
-        MaxHeight="400"
-        WindowStartupLocation="CenterOwner"
-        WindowState="Normal"
-        CanResize="false"
+        Width="300"
+        SizeToContent="Height"
+        MaxHeight="420"
+        WindowStartupLocation="Manual"
+        CanResize="False"
         SystemDecorations="None"
-        Background="{DynamicResource SystemControlPageBackgroundAltBrush}"
-        ShowInTaskbar="false"
-        Topmost="true">
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True">
 
-    <Panel>
-        <!-- Outer border for window look -->
-        <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                BorderThickness="1"
-                CornerRadius="8">
-            <StackPanel Margin="16">
-                <TextBlock Text="Claude Code Usage"
-                           FontSize="16"
-                           FontWeight="SemiBold"
-                           Margin="0,0,0,12"
-                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+  <Border Background="#1C1B19"
+          CornerRadius="12"
+          BorderBrush="#3A3833"
+          BorderThickness="1"
+          Padding="16,14">
+    <StackPanel Spacing="13">
 
-                <ItemsControl x:Name="LimitsList"
-                              Margin="0,0,0,8">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="models:FlyoutItem">
-                            <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                    BorderThickness="0,1,0,0"
-                                    Padding="0,8">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Label}"
-                                               FontSize="13"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-                                    <TextBlock Text="{Binding PctDisplay}"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                               Margin="0,2,0,0"/>
-                                    <TextBlock Text="{Binding ResetDisplay}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                               Margin="0,1,0,0"/>
-                                    <TextBlock Text="{Binding UpdatedDisplay}"
-                                               FontSize="10"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                               Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+      <!-- Header -->
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Grid.Column="0" Width="9" Height="9" CornerRadius="3"
+                Background="#D97757" VerticalAlignment="Center" Margin="0,0,9,0"/>
+        <TextBlock Grid.Column="1" Text="Claude Code usage"
+                   FontSize="12.5" FontWeight="SemiBold" Foreground="#EDEAE3"
+                   VerticalAlignment="Center"/>
+        <TextBlock Grid.Column="2" x:Name="UpdatedText" Text=""
+                   FontSize="11" Foreground="#857F75" VerticalAlignment="Center"/>
+      </Grid>
 
-                <TextBlock x:Name="StaleText"
-                           Text="Data may be stale"
-                           FontSize="10"
-                           FontStyle="Italic"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                           Margin="0,0,0,0"
-                           IsVisible="false"/>
+      <!-- Limit rows -->
+      <ItemsControl x:Name="LimitsList">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="models:FlyoutItem">
+            <StackPanel Spacing="6" Margin="0,0,0,9">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding Label}"
+                           FontSize="13" FontWeight="Medium" Foreground="#EDEAE3"
+                           VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="{Binding PctText}"
+                           FontSize="16" FontWeight="SemiBold"
+                           Foreground="{Binding BandBrush}" VerticalAlignment="Center"/>
+              </Grid>
+              <Border Height="6" CornerRadius="3" Background="#2E2C28" ClipToBounds="True">
+                <Border HorizontalAlignment="Left" Width="{Binding BarFillWidth}"
+                        CornerRadius="3" Background="{Binding BandBrush}"/>
+              </Border>
+              <TextBlock Text="{Binding ResetText}" FontSize="11" Foreground="#857F75"/>
             </StackPanel>
-        </Border>
-    </Panel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Stale indicator -->
+      <TextBlock x:Name="StaleText" Text="" FontSize="11"
+                 Foreground="#E0A92E" TextWrapping="Wrap" IsVisible="False"/>
+    </StackPanel>
+  </Border>
 </Window>

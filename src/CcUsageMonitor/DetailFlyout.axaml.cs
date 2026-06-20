@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using CcUsageMonitor.Core.Models;
 using CcUsageMonitor.Core.Services;
@@ -13,26 +14,29 @@ namespace CcUsageMonitor;
 public class FlyoutItem
 {
     public string Label { get; set; } = string.Empty;
-    public string PctDisplay { get; set; } = string.Empty;
-    public string ResetDisplay { get; set; } = string.Empty;
-    public string UpdatedDisplay { get; set; } = string.Empty;
+    public string PctText { get; set; } = string.Empty;
+    public double BarFillWidth { get; set; }
+    public IBrush BandBrush { get; set; } = Brushes.Gray;
+    public string ResetText { get; set; } = string.Empty;
 }
 
 /// <summary>
-/// Detail flyout — borderless popup listing all selected limits with % display,
-/// reset countdown, and last-updated time.
-/// Per spec §4.9: ≤320×400, vertical stack, dismisses on focus loss.
+/// Detail flyout — a dark popover listing all selected limits with a usage bar,
+/// percentage, and reset info. Per spec §4.9: ≤320×400, dismisses on focus loss.
 /// </summary>
 public partial class DetailFlyout : Window
 {
+    // Width of the usage-bar track: window 300 − 2×16 padding − 2×1 border ≈ 266px.
+    private const double BarTrackWidth = 266;
+
     private readonly Poller _poller;
     private readonly IConfigStore _configStore;
     private readonly Action<UsageSnapshot> _snapshotHandler;
 
-    // Parameterless ctor used only by the Avalonia XAML loader.
-    // This silences AVLN3001 ("no public constructor").
-    // The _poller/_configStore/_snapshotHandler fields are assigned by the DI ctor;
-    // the parameterless ctor is a no-op placeholder for the XAML loader.
+    /// <summary>Screen-pixel point (the cursor at click time) to anchor the flyout near.</summary>
+    public PixelPoint? Anchor { get; set; }
+
+    // Parameterless ctor used only by the Avalonia XAML loader (silences AVLN3001).
     #pragma warning disable CS8618
     public DetailFlyout() { }
     #pragma warning restore CS8618
@@ -44,16 +48,14 @@ public partial class DetailFlyout : Window
 
         InitializeComponent();
 
-        // Store the snapshot handler so we can subscribe/unsubscribe the same delegate
+        // Same delegate instance for subscribe/unsubscribe.
         _snapshotHandler = _ => Dispatcher.UIThread.Post(() => { if (_poller.Current != null) UpdateDisplay(_poller.Current); });
 
-        // Dismiss on focus loss — Deactivated fires when the window loses activation.
+        // Dismiss on focus loss.
         this.Deactivated += (_, _) => Close();
 
-        // Subscribe to poller snapshots for live updates
         _poller.SnapshotPublished += _snapshotHandler;
 
-        // Initial display
         if (_poller.Current != null)
             UpdateDisplay(_poller.Current);
     }
@@ -66,45 +68,39 @@ public partial class DetailFlyout : Window
         var items = new List<FlyoutItem>();
         foreach (var kind in config.SelectedLimits)
         {
-            if (snapshot.Limits.TryGetValue(kind, out var state))
-            {
-                var label = GetLimitLabel(kind);
-                var pctDisplay = state.Pct.HasValue ? $"{state.Pct}%" : "--%";
-                var resetDisplay = UsageText.Countdown(state.ResetsAt, now);
-                var updatedDisplay = $"Updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}";
+            var state = snapshot.Limits.TryGetValue(kind, out var s)
+                ? s
+                : new LimitState(null, null, false);
 
-                items.Add(new FlyoutItem
-                {
-                    Label = label,
-                    PctDisplay = pctDisplay,
-                    ResetDisplay = resetDisplay!,
-                    UpdatedDisplay = updatedDisplay
-                });
-            }
-            else
+            var band = Bands.Select(state.Pct, config.WarnThreshold, config.AlertThreshold);
+            var clamped = Math.Max(0, Math.Min(100, state.Pct ?? 0));
+
+            items.Add(new FlyoutItem
             {
-                var label = GetLimitLabel(kind);
-                items.Add(new FlyoutItem
-                {
-                    Label = label,
-                    PctDisplay = "--%",
-                    ResetDisplay = "Not available",
-                    UpdatedDisplay = $"Updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}"
-                });
-            }
+                Label = GetLimitLabel(kind),
+                PctText = state.Pct.HasValue ? $"{state.Pct}%" : "--%",
+                BarFillWidth = clamped / 100.0 * BarTrackWidth,
+                BandBrush = BandBrush(band),
+                ResetText = UsageText.ResetPhrase(state.ResetsAt, now) ?? "—", // em dash when no reset
+            });
         }
 
-        // Bind to ItemsControl
         LimitsList!.ItemsSource = items;
+        UpdatedText!.Text = $"updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}";
 
-        // Show stale indicator
         StaleText!.IsVisible = snapshot.Stale;
-        if (snapshot.Stale)
-        {
-            var reason = string.IsNullOrEmpty(snapshot.Error) ? "Data may be stale" : $"Stale: {snapshot.Error}";
-            StaleText!.Text = reason!;
-        }
+        StaleText!.Text = snapshot.Stale
+            ? (string.IsNullOrEmpty(snapshot.Error) ? "Data may be stale" : snapshot.Error)
+            : string.Empty;
     }
+
+    private static IBrush BandBrush(BandType band) => band switch
+    {
+        BandType.Green => new SolidColorBrush(Color.Parse("#4CAF50")),
+        BandType.Yellow => new SolidColorBrush(Color.Parse("#FFC107")),
+        BandType.Red => new SolidColorBrush(Color.Parse("#F44336")),
+        _ => new SolidColorBrush(Color.Parse("#6B6862")),
+    };
 
     private static string GetLimitLabel(LimitKind kind) => kind switch
     {
@@ -114,6 +110,26 @@ public partial class DetailFlyout : Window
         LimitKind.WeeklyOpus => "Weekly (Opus)",
         _ => kind.ToString()
     };
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        if (Anchor is not PixelPoint anchor)
+            return;
+
+        var scale = RenderScaling;
+        int w = (int)Math.Ceiling(ClientSize.Width * scale);
+        int h = (int)Math.Ceiling(ClientSize.Height * scale);
+
+        var screen = Screens.ScreenFromPoint(anchor) ?? Screens.Primary;
+        var wa = screen is { } s ? s.WorkingArea : new PixelRect(anchor.X - w, anchor.Y - h, w, h);
+        int left = wa.X, top = wa.Y, right = wa.X + wa.Width, bottom = wa.Y + wa.Height;
+
+        // Above-left of the cursor (clears a bottom/edge taskbar), clamped on-screen.
+        int x = Math.Clamp(anchor.X - w, left, Math.Max(left, right - w));
+        int y = Math.Clamp(anchor.Y - h, top, Math.Max(top, bottom - h));
+        Position = new PixelPoint(x, y);
+    }
 
     protected override void OnClosed(EventArgs e)
     {

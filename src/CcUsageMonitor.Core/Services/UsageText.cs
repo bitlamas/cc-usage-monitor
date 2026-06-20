@@ -48,29 +48,25 @@ public static class UsageText
     {
         var shortLabel = ShortLabel(kind);
         var pct = state.Pct is null ? "--" : state.Pct.Value.ToString();
-        var countdown = Countdown(state.ResetsAt, now);
-        var updatedAtStr = updatedAt.ToString("HH:mm");
-
-        string resetInfo;
-        if (countdown is null)
-        {
-            resetInfo = $"Updated {updatedAtStr}";
-        }
-        else if (countdown == Resetting)
-        {
-            resetInfo = "Resetting";
-        }
-        else if ((state.ResetsAt!.Value - now).TotalHours >= 24)
-        {
-            // Far reset (weeklies): absolute local day + time, e.g. "Resets Sun 10AM".
-            resetInfo = $"Resets {FormatAbsoluteReset(state.ResetsAt.Value, now)}";
-        }
-        else
-        {
-            resetInfo = $"Resets in {countdown}";
-        }
-
+        var resetInfo = ResetPhrase(state.ResetsAt, now) ?? $"Updated {updatedAt:HH:mm}";
         return $"{shortLabel} · {pct}% · {resetInfo}";
+    }
+
+    /// <summary>
+    /// Reset phrase shared by the tooltip and flyout:
+    /// "Resets in 3h 47m" | "Resets Sun 10AM" (>= 24h away) | "Resetting".
+    /// Returns null when ResetsAt is null (the caller supplies a fallback).
+    /// </summary>
+    public static string? ResetPhrase(DateTimeOffset? resetsAt, DateTimeOffset now)
+    {
+        var countdown = Countdown(resetsAt, now);
+        if (countdown is null)
+            return null;
+        if (countdown == Resetting)
+            return "Resetting";
+        if ((resetsAt!.Value - now).TotalHours >= 24)
+            return $"Resets {FormatAbsoluteReset(resetsAt.Value, now)}";
+        return $"Resets in {countdown}";
     }
 
     private static string ShortLabel(LimitKind kind) => kind switch
