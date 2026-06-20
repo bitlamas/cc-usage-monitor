@@ -39,7 +39,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 16, 5, 0, LocalOffset);
         var state = new LimitState(42, resetsAt, true);
-        var expected = "5-hour · 42% · Resets in ~2h 0m";
+        var expected = "5-hour · 42% · Resets in 2h 0m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -49,7 +49,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 15, 35, 45, LocalOffset);
         var state = new LimitState(80, resetsAt, true);
-        var expected = "5-hour · 80% · Resets in ~1h 30m";
+        var expected = "5-hour · 80% · Resets in 1h 30m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -59,7 +59,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 14, 52, 0, LocalOffset);
         var state = new LimitState(95, resetsAt, true);
-        var expected = "5-hour · 95% · Resets in ~47m";
+        var expected = "5-hour · 95% · Resets in 47m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -69,7 +69,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 14, 5, 30, LocalOffset);
         var state = new LimitState(95, resetsAt, true);
-        var expected = "5-hour · 95% · Resets in ~0m";
+        var expected = "5-hour · 95% · Resets in 0m";
         var actual = UsageText.Tooltip(LimitKind.Session5h, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -111,7 +111,7 @@ public class UsageTextTests
     {
         var resetsAt = new DateTimeOffset(2026, 6, 18, 17, 5, 0, LocalOffset);
         var state = new LimitState(null, resetsAt, true);
-        var expected = "Weekly · --% · Resets in ~3h 0m";
+        var expected = "Weekly · --% · Resets in 3h 0m";
         var actual = UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
     }
@@ -187,6 +187,35 @@ public class UsageTextTests
         var actual = UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
+    }
+
+    // Weekly far reset (>= 24h) → absolute abbreviated day + 12h time
+    [Fact]
+    public void UsageText_Tooltip_WeeklyFarReset_AbsoluteDay()
+    {
+        // now = Thu 2026-06-18 14:05; reset Sun 2026-06-21 10:00 (>24h away)
+        var resetsAt = new DateTimeOffset(2026, 6, 21, 10, 0, 0, LocalOffset);
+        var state = new LimitState(46, resetsAt, true);
+        Assert.Equal("Weekly · 46% · Resets Sun 10AM",
+            UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now));
+    }
+
+    [Fact]
+    public void UsageText_Tooltip_WeeklyFarReset_WithMinutes()
+    {
+        var resetsAt = new DateTimeOffset(2026, 6, 21, 22, 30, 0, LocalOffset); // Sun 10:30 PM
+        var state = new LimitState(46, resetsAt, true);
+        Assert.Equal("Weekly · 46% · Resets Sun 10:30PM",
+            UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now));
+    }
+
+    [Fact]
+    public void UsageText_Tooltip_JustUnder24h_UsesRelative()
+    {
+        var resetsAt = new DateTimeOffset(2026, 6, 19, 13, 0, 0, LocalOffset); // 22h 55m away (<24h)
+        var state = new LimitState(46, resetsAt, true);
+        Assert.Equal("Weekly · 46% · Resets in 22h 55m",
+            UsageText.Tooltip(LimitKind.WeeklyAll, state, UpdatedAt, Now));
     }
 
     // Edge: exact-hour with 0 minutes

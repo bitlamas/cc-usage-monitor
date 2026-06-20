@@ -32,7 +32,8 @@ public static class RingRenderer
         {
             Color = new SKColor(0x00, 0x00, 0x00, 0xCC),
             StrokeWidth = 1f,
-            IsStroke = true
+            IsStroke = true,
+            IsAntialias = true
         };
         canvas.DrawCircle(half, half, radius, trackOutlinePaint);
 
@@ -49,7 +50,8 @@ public static class RingRenderer
                 using var wedgePaint = new SKPaint
                 {
                     Color = new SKColor(colorArgb),
-                    IsStroke = false
+                    IsStroke = false,
+                    IsAntialias = true
                 };
 
                 // Wedge sweep: clamped pct → 0° to 360° (full disc at >=100%)

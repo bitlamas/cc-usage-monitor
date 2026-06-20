@@ -60,9 +60,14 @@ public static class UsageText
         {
             resetInfo = "Resetting";
         }
+        else if ((state.ResetsAt!.Value - now).TotalHours >= 24)
+        {
+            // Far reset (weeklies): absolute local day + time, e.g. "Resets Sun 10AM".
+            resetInfo = $"Resets {FormatAbsoluteReset(state.ResetsAt.Value, now)}";
+        }
         else
         {
-            resetInfo = $"Resets in ~{countdown}";
+            resetInfo = $"Resets in {countdown}";
         }
 
         return $"{shortLabel} · {pct}% · {resetInfo}";
@@ -76,6 +81,21 @@ public static class UsageText
         LimitKind.WeeklyOpus => "Weekly (Opus)",
         _ => LimitKindMapping.GetLabel(kind)
     };
+
+    /// <summary>
+    /// Absolute reset time for far-out resets (>= 24h): abbreviated local day + 12-hour time,
+    /// e.g. "Sun 10AM" / "Mon 10:30PM". Formatted in now.Offset so it is the user's local
+    /// day/time and deterministic under test.
+    /// </summary>
+    private static string FormatAbsoluteReset(DateTimeOffset resetsAt, DateTimeOffset now)
+    {
+        var local = resetsAt.ToOffset(now.Offset);
+        var day = local.ToString("ddd", System.Globalization.CultureInfo.InvariantCulture);
+        var time = local.Minute == 0
+            ? local.ToString("htt", System.Globalization.CultureInfo.InvariantCulture)
+            : local.ToString("h:mmtt", System.Globalization.CultureInfo.InvariantCulture);
+        return $"{day} {time}";
+    }
 
     /// <summary>Toast title: "Claude usage at {pct}%". Pct is unclamped.</summary>
     public static string ToastTitle(int pct)
