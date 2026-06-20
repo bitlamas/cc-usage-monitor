@@ -50,26 +50,33 @@ public class RingRendererTests
     }
 
     [Fact]
-    public void Render_NullPct_DrawsTransparentDisc()
+    public void Render_NullPct_DrawsTransparentDiscWithOutline()
     {
         var bitmap = RingRenderer.Render(null, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
         // Center pixel should be transparent (no wedge, transparent track).
         var center = bitmap.GetPixel(16, 16);
         Assert.True(center.Alpha < 10,
             $"Center should be transparent, got alpha={center.Alpha}");
+        // Outline: top edge pixel should be dark (the 1px stroke ring).
+        var topEdge = bitmap.GetPixel(16, 1);
+        Assert.True(topEdge.Red < 60 && topEdge.Green < 60 && topEdge.Blue < 60,
+            $"Top edge should be dark outline, got {topEdge}");
     }
 
     // --- Filled disc track is drawn (even at 0%) ---
 
     [Fact]
-    public void Render_0Pct_TrackIsTransparent()
+    public void Render_0Pct_TrackIsTransparentWithOutline()
     {
         var bitmap = RingRenderer.Render(0, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // At 0% there's no wedge, and the track is transparent.
-        // Center pixel should be transparent.
+        // At 0% there's no wedge, transparent fill with thin outline.
         var center = bitmap.GetPixel(16, 16);
         Assert.True(center.Alpha < 10,
             $"Center should be transparent, got alpha={center.Alpha}");
+        // Outline at edge.
+        var topEdge = bitmap.GetPixel(16, 1);
+        Assert.True(topEdge.Red < 60 && topEdge.Green < 60 && topEdge.Blue < 60,
+            $"Top edge should be dark outline, got {topEdge}");
     }
 
     // --- Wedge starts at 12 o'clock (top), filled disc ---
@@ -227,10 +234,13 @@ public class RingRendererTests
     public void Render_NegativePct_ClampedToZero_NoWedge()
     {
         var bitmap = RingRenderer.Render(-10, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // -10 should be clamped to 0 → band is green, sweep is 0° (no wedge drawn)
-        // Center pixel should be transparent (no wedge, transparent track).
+        // -10 clamped to 0 → band is green, sweep 0° (no wedge).
+        // Center transparent, outline at edge.
         var center = bitmap.GetPixel(16, 16);
         Assert.True(center.Alpha < 10, $"Center should be transparent, got alpha={center.Alpha}");
+        var topEdge = bitmap.GetPixel(16, 1);
+        Assert.True(topEdge.Red < 60 && topEdge.Green < 60 && topEdge.Blue < 60,
+            $"Top edge should be dark outline, got {topEdge}");
     }
 
     // --- Text outline seam ---

@@ -43,14 +43,14 @@ public static class RingRenderer
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Transparent);
 
-        // --- Track (transparent — only the wedge is visible) ---
-        // A transparent disc ensures the bitmap has an opaque alpha fill for composited tray icons.
-        using var trackPaint = new SKPaint
+        // --- Track (transparent fill + thin dark outline ring) ---
+        using var trackOutlinePaint = new SKPaint
         {
-            Color = SKColors.Transparent,
-            IsStroke = false
+            Color = new SKColor(0x00, 0x00, 0x00, 0xCC),
+            StrokeWidth = 1f,
+            IsStroke = true
         };
-        canvas.DrawCircle(half, half, radius, trackPaint);
+        canvas.DrawCircle(half, half, radius, trackOutlinePaint);
 
         // --- Wedge (filled pie slice, band-colored) ---
         if (pct is not null)
@@ -82,7 +82,7 @@ public static class RingRenderer
 
                 var textPaint = new SKPaint
                 {
-                    TextSize = 14f,
+                    TextSize = 15f,
                     IsStroke = false,
                     Color = new SKColor(0xFF, 0xFF, 0xFF)
                 };
