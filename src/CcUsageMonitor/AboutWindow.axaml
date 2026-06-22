@@ -1,0 +1,64 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CcUsageMonitor.AboutWindow"
+        Title="About cc-usage-monitor"
+        Width="320"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False"
+        SystemDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True">
+
+  <Window.Styles>
+    <!-- Flatten the GitHub link button into a real link -->
+    <Style Selector="Button#GithubLink /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button#GithubLink:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="TextBlock.Foreground" Value="#E8906F"/>
+    </Style>
+    <!-- Subtle Close button -->
+    <Style Selector="Button#CloseButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#3A3833"/>
+      <Setter Property="TextBlock.Foreground" Value="#EDEAE3"/>
+    </Style>
+  </Window.Styles>
+
+  <Border Background="#1C1B19"
+          CornerRadius="12"
+          BorderBrush="#3A3833"
+          BorderThickness="1"
+          Padding="20,18">
+    <StackPanel Spacing="12">
+
+      <!-- Title -->
+      <StackPanel Orientation="Horizontal" Spacing="9">
+        <Border Width="10" Height="10" CornerRadius="3" Background="#D97757" VerticalAlignment="Center"/>
+        <TextBlock Text="cc-usage-monitor" FontSize="15" FontWeight="SemiBold"
+                   Foreground="#EDEAE3" VerticalAlignment="Center"/>
+      </StackPanel>
+
+      <TextBlock x:Name="VersionText" Text="Version 1.0.0" FontSize="12" Foreground="#857F75"/>
+
+      <TextBlock Text="Claude Code usage limits in your system tray."
+                 FontSize="12.5" Foreground="#C9C4BA" TextWrapping="Wrap"/>
+
+      <Button x:Name="GithubLink"
+              Content="github.com/bitlamas/cc-usage-monitor"
+              Background="Transparent" BorderThickness="0" Padding="0"
+              Foreground="#D97757" FontSize="12.5" Cursor="Hand"
+              HorizontalAlignment="Left"/>
+
+      <TextBlock Text="GPLv3" FontSize="11" Foreground="#6B6862"/>
+
+      <Button x:Name="CloseButton" Content="Close"
+              HorizontalAlignment="Right"
+              Background="#2E2C28" Foreground="#EDEAE3"
+              BorderThickness="0" CornerRadius="6" Padding="16,6" Cursor="Hand"/>
+    </StackPanel>
+  </Border>
+</Window>

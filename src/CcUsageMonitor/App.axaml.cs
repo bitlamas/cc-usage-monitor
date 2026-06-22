@@ -22,10 +22,9 @@ public class App : Application
     {
         // Build the DI-like container
         var configDir = ResolveConfigDir();
-        var executablePath = GetType().Assembly.Location;
-        var exeDir = Path.GetDirectoryName(executablePath) ?? ".";
-        var exeName = Path.GetFileNameWithoutExtension(executablePath);
-        var exeFullPath = Path.Combine(exeDir, exeName + (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : ""));
+        // Environment.ProcessPath is the actual running executable — correct for a
+        // single-file publish (Assembly.Location is empty there). Fall back just in case.
+        var exeFullPath = Environment.ProcessPath ?? GetType().Assembly.Location;
 
         var configStore = new ConfigStore(configDir);
         var credentialStore = new CredentialStore(); // uses default ProcessRunner

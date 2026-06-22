@@ -32,9 +32,28 @@ public class TrayController : IDisposable
 
     private readonly Dictionary<LimitKind, TrayIcon> _trayIcons = new();
     private readonly Dictionary<LimitKind, NativeMenuItem> _limitMenuItems = new();
+    private readonly List<LimitKind> _iconOrder = new();   // current tray registration order
+    private NativeMenu? _menu;
     private DetailFlyout? _flyout;
+    private AboutWindow? _about;
     private readonly object _lock = new();
     private UsageSnapshot? _latestSnapshot;
+
+    // Limits the user can choose in v1, in default left-to-right display order.
+    // WeeklyOpus is intentionally omitted — the API doesn't expose it yet, so it
+    // stays hidden until a future version (Core still accepts it; we filter here).
+    private static readonly LimitKind[] SelectableKinds =
+    {
+        LimitKind.Session5h,
+        LimitKind.WeeklyAll,
+        LimitKind.WeeklySonnet,
+    };
+
+    private static readonly List<LimitKind> DefaultLimits = new()
+    {
+        LimitKind.Session5h,
+        LimitKind.WeeklyAll,
+    };
 
     public TrayController(
         Poller poller,
@@ -66,7 +85,7 @@ public class TrayController : IDisposable
         var config = _configStore.Load();
         SyncIcons(config);   // create the icons first...
         BuildMenu(config);   // ...so BuildMenu can assign the menu to them
-        _autostart.IsEnabled(); // warm up
+        ReconcileAutostart(config.StartAtLogin);
         // Render current snapshot if available
         if (_poller.Current != null)
             RenderSnapshot(_poller.Current);
@@ -143,19 +162,16 @@ public class TrayController : IDisposable
     {
         var menu = new NativeMenu();
 
-        // LimitKind checkable items — in config.SelectedLimits order first, then remaining
-        var selected = config.SelectedLimits.Distinct().ToList();
-        var allKinds = Enum.GetValues(typeof(LimitKind)).Cast<LimitKind>().ToList();
-        var remaining = allKinds.Except(selected).ToList();
-
-        foreach (var kind in selected.Concat(remaining))
+        // Checkable limit items — fixed v1 set in stable order (WeeklyOpus hidden).
+        _limitMenuItems.Clear();
+        foreach (var kind in SelectableKinds)
         {
             var item = new NativeMenuItem
             {
                 Header = GetLimitLabel(kind),
                 IsChecked = config.SelectedLimits.Contains(kind),
                 ToggleType = NativeMenuItemToggleType.CheckBox,
-                IsEnabled = true // will be updated per-snapshot
+                IsEnabled = true // updated per-snapshot
             };
             item.Click += (_, _) => ToggleLimit(kind);
             menu.Items.Add(item);
@@ -163,16 +179,6 @@ public class TrayController : IDisposable
         }
 
         menu.Items.Add(new NativeMenuItemSeparator());
-
-        // Alerts
-        var alertsItem = new NativeMenuItem
-        {
-            Header = "Alerts",
-            IsChecked = config.AlertsEnabled,
-            ToggleType = NativeMenuItemToggleType.CheckBox
-        };
-        alertsItem.Click += (_, _) => ToggleAlerts();
-        menu.Items.Add(alertsItem);
 
         // Start at login
         var startItem = new NativeMenuItem
@@ -198,12 +204,18 @@ public class TrayController : IDisposable
 
         menu.Items.Add(new NativeMenuItemSeparator());
 
+        // About
+        var aboutItem = new NativeMenuItem { Header = "About" };
+        aboutItem.Click += (_, _) => ShowAbout();
+        menu.Items.Add(aboutItem);
+
         // Quit
         var quitItem = new NativeMenuItem { Header = "Quit" };
         quitItem.Click += (_, _) => Quit();
         menu.Items.Add(quitItem);
 
-        // Assign menu to all tray icons
+        // Assign menu to all tray icons (and remember it for icon rebuilds).
+        _menu = menu;
         lock (_lock)
         {
             foreach (var ti in _trayIcons.Values)
@@ -213,41 +225,53 @@ public class TrayController : IDisposable
 
     private void SyncIcons(AppConfig config)
     {
-        // Create icons for selected kinds, remove extras
-        // Icons are registered in enum order (Session5h, WeeklyAll, WeeklySonnet, WeeklyOpus)
-        // so 5-hour appears leftmost in the system tray on Windows.
         lock (_lock)
         {
-            // Add missing icons — iterate in fixed priority order
-            var priorityOrder = Enum.GetValues(typeof(LimitKind)).Cast<LimitKind>();
-            foreach (var kind in priorityOrder)
-            {
-                if (config.SelectedLimits.Contains(kind) && !_trayIcons.ContainsKey(kind))
-                {
-                    var trayIcon = new TrayIcon
-                    {
-                        ToolTipText = "Loading…",
-                        IsVisible = true
-                    };
-                    trayIcon.Clicked += OnTrayIconClicked;
-                    _trayIcons[kind] = trayIcon;
+            // Desired left-to-right display order = config.SelectedLimits order,
+            // filtered to the v1-selectable kinds (drops a stray WeeklyOpus etc.).
+            var desired = config.SelectedLimits
+                .Where(SelectableKinds.Contains)
+                .Distinct()
+                .ToList();
+            if (desired.Count == 0)
+                desired = new List<LimitKind>(DefaultLimits);
 
-                    var icons = TrayIcon.GetIcons(Application.Current!);
-                    icons?.Add(trayIcon);
-                }
-            }
+            // Already showing exactly this set in this order → nothing to do.
+            if (desired.SequenceEqual(_iconOrder))
+                return;
 
-            // Remove icons for deselected kinds
-            var toRemove = _trayIcons.Keys.Except(config.SelectedLimits).ToList();
-            foreach (var kind in toRemove)
+            var icons = TrayIcon.GetIcons(Application.Current!);
+
+            // Windows assigns tray position by registration sequence (and shows the
+            // most-recently-added icon leftmost), so order can only be changed by
+            // re-registering the whole set. Tear down, then re-add in REVERSE of the
+            // desired order → left-to-right ends up matching `desired`.
+            foreach (var kind in _iconOrder)
             {
                 if (_trayIcons.TryGetValue(kind, out var ti))
                 {
-                    TrayIcon.GetIcons(Application.Current!)?.Remove(ti);
+                    icons?.Remove(ti);
                     ti.Dispose();
-                    _trayIcons.Remove(kind);
                 }
             }
+            _trayIcons.Clear();
+            _iconOrder.Clear();
+
+            foreach (var kind in Enumerable.Reverse(desired))
+            {
+                var trayIcon = new TrayIcon
+                {
+                    ToolTipText = "Loading…",
+                    IsVisible = true
+                };
+                trayIcon.Clicked += OnTrayIconClicked;
+                if (_menu != null)
+                    trayIcon.Menu = _menu;   // reattach on rebuild (null on first Initialize; BuildMenu assigns then)
+                _trayIcons[kind] = trayIcon;
+                icons?.Add(trayIcon);
+            }
+
+            _iconOrder.AddRange(desired);
         }
     }
 
@@ -309,6 +333,8 @@ public class TrayController : IDisposable
 
         _configStore.Save(newConfig);
         SyncIcons(newConfig);
+        if (_poller.Current != null)
+            RenderSnapshot(_poller.Current);   // freshly (re)built icons start blank
         UpdateLimitMenuItems();
     }
 
@@ -350,19 +376,33 @@ public class TrayController : IDisposable
         }
     }
 
-    private void ToggleAlerts()
+    private void ReconcileAutostart(bool desired)
     {
-        var config = _configStore.Load();
-        var newConfig = new AppConfig(
-            config.SelectedLimits,
-            config.ShowNumberInRing,
-            !config.AlertsEnabled,
-            config.AlertThreshold,
-            config.WarnThreshold,
-            config.PollIntervalSeconds,
-            config.StartAtLogin,
-            config.Colors);
-        _configStore.Save(newConfig);
+        // Make the real OS autostart entry match the saved preference so the menu
+        // checkbox never lies (first-run default, or a manually removed shortcut).
+        try
+        {
+            if (desired && !_autostart.IsEnabled())
+                _autostart.Enable();
+            else if (!desired && _autostart.IsEnabled())
+                _autostart.Disable();
+        }
+        catch
+        {
+            // Non-fatal — autostart is best-effort.
+        }
+    }
+
+    private void ShowAbout()
+    {
+        if (_about != null && _about.IsVisible)
+        {
+            _about.Activate();
+            return;
+        }
+        _about = new AboutWindow();
+        _about.Closed += (_, _) => { lock (_lock) { _about = null; } };
+        _about.Show();
     }
 
     private void ToggleStartAtLogin()
