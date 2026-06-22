@@ -16,7 +16,8 @@ public class ConfigStore : IConfigStore
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.Never
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        WriteIndented = true   // human-readable config.json (used by "Open config file")
     };
 
     // Default values per spec §4.7
