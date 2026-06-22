@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="CcUsageMonitor.AboutWindow"
-        Title="About cc-usage-monitor"
+        Title="About Claude Code Usage Monitor"
         Width="320"
         SizeToContent="Height"
         WindowStartupLocation="CenterScreen"
@@ -38,7 +38,7 @@
       <!-- Title -->
       <StackPanel Orientation="Horizontal" Spacing="9">
         <Border Width="10" Height="10" CornerRadius="3" Background="#D97757" VerticalAlignment="Center"/>
-        <TextBlock Text="cc-usage-monitor" FontSize="15" FontWeight="SemiBold"
+        <TextBlock Text="Claude Code Usage Monitor" FontSize="15" FontWeight="SemiBold"
                    Foreground="#EDEAE3" VerticalAlignment="Center"/>
       </StackPanel>
 

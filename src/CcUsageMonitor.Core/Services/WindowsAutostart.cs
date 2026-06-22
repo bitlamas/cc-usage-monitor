@@ -56,7 +56,7 @@ public class WindowsAutostart : IAutostart
             ?? throw new InvalidOperationException("CreateShortcut returned null.");
 
         shortcut.GetType().InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { targetPath });
-        shortcut.GetType().InvokeMember("Description", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { "cc-usage-monitor" });
+        shortcut.GetType().InvokeMember("Description", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { "Claude Code Usage Monitor" });
         shortcut.GetType().InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, shortcut, null);
 
         Marshal.FinalReleaseComObject(wshShell);
