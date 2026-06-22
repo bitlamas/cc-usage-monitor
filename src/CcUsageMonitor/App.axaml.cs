@@ -23,8 +23,8 @@ public class App : Application
         // Build the DI-like container
         var configDir = ResolveConfigDir();
         // Environment.ProcessPath is the actual running executable — correct for a
-        // single-file publish (Assembly.Location is empty there). Fall back just in case.
-        var exeFullPath = Environment.ProcessPath ?? GetType().Assembly.Location;
+        // single-file publish (where Assembly.Location is empty) and for normal builds.
+        var exeFullPath = Environment.ProcessPath!;
 
         var configStore = new ConfigStore(configDir);
         var credentialStore = new CredentialStore(); // uses default ProcessRunner
