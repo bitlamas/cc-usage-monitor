@@ -33,6 +33,7 @@ public class TrayController : IDisposable
     private readonly Dictionary<LimitKind, TrayIcon> _trayIcons = new();
     private readonly Dictionary<LimitKind, NativeMenuItem> _limitMenuItems = new();
     private readonly List<LimitKind> _iconOrder = new();   // current tray registration order
+    private CancellationTokenSource? _addCts;              // cancels an in-flight staggered add
     private NativeMenu? _menu;
     private DetailFlyout? _flyout;
     private AboutWindow? _about;
@@ -225,6 +226,7 @@ public class TrayController : IDisposable
 
     private void SyncIcons(AppConfig config)
     {
+        List<LimitKind> addOrder;
         lock (_lock)
         {
             // Desired left-to-right display order = config.SelectedLimits order,
@@ -240,12 +242,10 @@ public class TrayController : IDisposable
             if (desired.SequenceEqual(_iconOrder))
                 return;
 
-            var icons = TrayIcon.GetIcons(Application.Current!);
+            // Abandon any staggered add still in flight from a previous call.
+            _addCts?.Cancel();
 
-            // Windows assigns tray position by registration sequence (and shows the
-            // most-recently-added icon leftmost), so order can only be changed by
-            // re-registering the whole set. Tear down, then re-add in REVERSE of the
-            // desired order → left-to-right ends up matching `desired`.
+            var icons = TrayIcon.GetIcons(Application.Current!);
             foreach (var kind in _iconOrder)
             {
                 if (_trayIcons.TryGetValue(kind, out var ti))
@@ -256,22 +256,75 @@ public class TrayController : IDisposable
             }
             _trayIcons.Clear();
             _iconOrder.Clear();
+            _iconOrder.AddRange(desired);
 
-            foreach (var kind in Enumerable.Reverse(desired))
+            // Windows 11 appends each newly-added tray icon to the RIGHT of the existing
+            // ones and persists its position per icon. Icons added in the same instant get
+            // an arbitrary (sticky) order, so we add in `desired` order WITH a delay
+            // between each: desired[0] (the leftmost we want, e.g. 5-hour) is added first
+            // → oldest → leftmost; later limits land to its right. Windows then persists
+            // this position per-exe in HKCU\Control Panel\NotifyIconSettings across runs.
+            // (No API forces position; a user's manual drag still wins and is preserved.)
+            addOrder = new List<LimitKind>(desired);
+        }
+
+        _addCts = new CancellationTokenSource();
+        _ = AddIconsStaggeredAsync(addOrder, _addCts.Token);
+    }
+
+    /// <summary>
+    /// Adds the tray icons one at a time with a delay between each. On Windows 11 the gap
+    /// makes add-TIME the deciding factor for position; combined with adding in `desired`
+    /// order, the earliest-added limit sits leftmost (see SyncIcons). Without the gap,
+    /// same-instant adds get an arbitrary, sticky order.
+    /// Fire-and-forget from SyncIcons; runs on the UI thread (Avalonia sync context).
+    /// </summary>
+    private async Task AddIconsStaggeredAsync(List<LimitKind> addOrder, CancellationToken ct)
+    {
+        const int gapMs = 350;   // long enough for Windows to record distinct add-times
+        var icons = TrayIcon.GetIcons(Application.Current!);
+
+        try
+        {
+            for (int i = 0; i < addOrder.Count; i++)
             {
+                if (ct.IsCancellationRequested)
+                    return;
+
+                if (i > 0)
+                    await Task.Delay(gapMs, ct);
+
+                var kind = addOrder[i];
                 var trayIcon = new TrayIcon
                 {
                     ToolTipText = "Loading…",
                     IsVisible = true
                 };
                 trayIcon.Clicked += OnTrayIconClicked;
-                if (_menu != null)
-                    trayIcon.Menu = _menu;   // reattach on rebuild (null on first Initialize; BuildMenu assigns then)
-                _trayIcons[kind] = trayIcon;
-                icons?.Add(trayIcon);
-            }
 
-            _iconOrder.AddRange(desired);
+                lock (_lock)
+                {
+                    if (ct.IsCancellationRequested)
+                    {
+                        trayIcon.Dispose();
+                        return;
+                    }
+                    if (_menu != null)
+                        trayIcon.Menu = _menu;   // BuildMenu assigns to already-added icons; this covers later ones
+                    _trayIcons[kind] = trayIcon;
+                }
+
+                icons?.Add(trayIcon);
+
+                // Paint immediately from the latest snapshot so it isn't blank mid-stagger.
+                var snap = _latestSnapshot;
+                if (snap != null)
+                    RenderSnapshot(snap);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer SyncIcons — nothing to do.
         }
     }
 
@@ -319,6 +372,13 @@ public class TrayController : IDisposable
         else
         {
             selected.Add(kind);
+            // Re-order to the canonical left-to-right sequence (SelectableKinds) so a
+            // re-enabled limit returns to its proper slot instead of being appended on
+            // the right. Any non-selectable kinds (e.g. a stray WeeklyOpus) are kept,
+            // trailing, so toggling never silently drops them from config.
+            selected = SelectableKinds.Where(selected.Contains)
+                .Concat(selected.Where(k => !SelectableKinds.Contains(k)))
+                .ToList();
         }
 
         var newConfig = new AppConfig(
