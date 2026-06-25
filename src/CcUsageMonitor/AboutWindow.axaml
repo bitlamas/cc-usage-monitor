@@ -36,8 +36,8 @@
     <StackPanel Spacing="12">
 
       <!-- Title -->
-      <StackPanel Orientation="Horizontal" Spacing="9">
-        <Border Width="10" Height="10" CornerRadius="3" Background="#D97757" VerticalAlignment="Center"/>
+      <StackPanel Orientation="Horizontal" Spacing="10">
+        <Image Source="/Assets/icon.png" Width="28" Height="28" VerticalAlignment="Center"/>
         <TextBlock Text="Claude Code Usage Monitor" FontSize="15" FontWeight="SemiBold"
                    Foreground="#EDEAE3" VerticalAlignment="Center"/>
       </StackPanel>

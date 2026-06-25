@@ -6,6 +6,8 @@
     <!-- Repo stays "cc-usage-monitor"; the built exe and display name are friendly. -->
     <AssemblyName>CC-Usage-Monitor</AssemblyName>
     <AssemblyTitle>Claude Code Usage Monitor</AssemblyTitle>
+    <!-- Official app icon, embedded in the exe (Explorer / taskbar / Alt-Tab). -->
+    <ApplicationIcon>../../icon.ico</ApplicationIcon>
     <Product>Claude Code Usage Monitor</Product>
     <Company>bitlamas</Company>
     <Description>Claude Code usage limits in your system tray.</Description>
@@ -32,5 +34,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CcUsageMonitor.Core\CcUsageMonitor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- App logo as an in-app Avalonia asset (About box). Sourced from the repo-root png. -->
+    <AvaloniaResource Include="..\..\icon.png" Link="Assets\icon.png" />
   </ItemGroup>
 </Project>
