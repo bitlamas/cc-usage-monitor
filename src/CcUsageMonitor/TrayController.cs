@@ -159,6 +159,20 @@ public class TrayController : IDisposable
         return new WindowIcon(bitmap);
     }
 
+    /// <summary>
+    /// Renders the ring for a kind from the latest snapshot if available, else the dim
+    /// track. Used to seed a tray icon with a non-blank bitmap BEFORE it is added to the
+    /// tray, so Windows' add-time snapshot (shown in Taskbar Settings) is a real ring.
+    /// </summary>
+    private WindowIcon RenderInitialIcon(LimitKind kind)
+    {
+        var config = _configStore.Load();
+        var state = _latestSnapshot is not null && _latestSnapshot.Limits.TryGetValue(kind, out var s)
+            ? s
+            : new LimitState(null, null, false);
+        return RenderRing(state, config.ShowNumberInRing, config.WarnThreshold, config.AlertThreshold);
+    }
+
     private void BuildMenu(AppConfig config)
     {
         var menu = new NativeMenu();
@@ -290,6 +304,16 @@ public class TrayController : IDisposable
 
         try
         {
+            // Wait briefly for the first usage snapshot so each icon carries a real
+            // (colored) ring the moment it's added — not the dim track. This matters
+            // because Windows captures the tray icon for the Taskbar Settings list
+            // ("Other system tray icons") AT ADD TIME and does not reliably refresh
+            // that capture when we update the icon later: an icon added blank stays a
+            // blank/placeholder square in Settings forever. Bounded so we never hang
+            // if the API is unreachable (falls back to the dim track ring).
+            for (int w = 0; w < 50 && _latestSnapshot is null && !ct.IsCancellationRequested; w++)
+                await Task.Delay(100, ct);
+
             for (int i = 0; i < addOrder.Count; i++)
             {
                 if (ct.IsCancellationRequested)
@@ -299,10 +323,15 @@ public class TrayController : IDisposable
                     await Task.Delay(gapMs, ct);
 
                 var kind = addOrder[i];
+                // Create HIDDEN with the ring already set, then add, then make visible.
+                // Windows snapshots the tray icon for Taskbar Settings at the NIM_ADD that
+                // fires when the icon becomes visible — so the bitmap must already be in
+                // place by then, or Settings shows a blank square forever.
                 var trayIcon = new TrayIcon
                 {
                     ToolTipText = "Loading…",
-                    IsVisible = true
+                    IsVisible = false,
+                    Icon = RenderInitialIcon(kind)
                 };
                 trayIcon.Clicked += OnTrayIconClicked;
 
@@ -319,6 +348,7 @@ public class TrayController : IDisposable
                 }
 
                 icons?.Add(trayIcon);
+                trayIcon.IsVisible = true;   // fires NIM_ADD with the ring already in place
 
                 // Paint immediately from the latest snapshot so it isn't blank mid-stagger.
                 var snap = _latestSnapshot;

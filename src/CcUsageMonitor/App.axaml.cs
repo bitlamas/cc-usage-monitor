@@ -42,11 +42,13 @@ public class App : Application
 
         _trayController = new TrayController(poller, configStore, autostart, notificationSink, alertManager, configDir);
 
+        // Start the poller FIRST so a usage snapshot is in flight before the tray icons
+        // are built. Initialize()'s staggered add waits briefly for that first snapshot
+        // so each icon is added carrying a real ring (see TrayController add-time note).
+        _ = poller.StartAsync(CancellationToken.None);
+
         // Initialize tray icons and render current snapshot
         _trayController.Initialize();
-
-        // Start the poller
-        _ = poller.StartAsync(CancellationToken.None);
 
         // Tray-only headless app — no main window.
         base.OnFrameworkInitializationCompleted();
