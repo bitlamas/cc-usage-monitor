@@ -32,6 +32,7 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="Avalonia.FreeDesktop" Version="11.2.1" />
   </ItemGroup>
 
   <ItemGroup>
