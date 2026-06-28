@@ -9,7 +9,7 @@ namespace CcUsageMonitor.Core.Tests.Services;
 
 public class AutostartTests
 {
-    // --- Fake round-trip: Enable → IsEnabled → Disable ---
+    // --- FakeAutostart round-trip tests ---
 
     [Fact]
     public void FakeAutostart_DisabledByDefault()
@@ -92,21 +92,15 @@ public class AutostartTests
         try
         {
             var autostart = new WindowsAutostart(exe, startupFolder: tempDir);
-            // WindowsAutostart creates the startup folder dir on construction
-            // But it won't actually create the shortcut unless WScript.Shell is available
-            // So we test: after Enable(), if a .lnk file exists, IsEnabled should be true
-            // If COM is unavailable, Enable throws — that's a valid failure mode
             try
             {
                 autostart.Enable();
-                // If we got here, COM worked — shortcut should exist
                 Assert.True(autostart.IsEnabled());
                 Assert.True(File.Exists(autostart.GetType().GetField("_shortcutPath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(autostart) as string));
             }
             catch (InvalidOperationException)
             {
-                // WScript.Shell unavailable — acceptable on non-Windows or headless
-                // The interface contract is still tested via FakeAutostart
+                // WScript.Shell unavailable
             }
         }
         finally
@@ -133,7 +127,7 @@ public class AutostartTests
         }
         catch (InvalidOperationException)
         {
-            // WScript.Shell unavailable — skip
+            // WScript.Shell unavailable
         }
         finally
         {
@@ -167,7 +161,7 @@ public class AutostartTests
 
         try
         {
-            var autostart = new MockMacAutostart(exe, tempDir);
+            var autostart = new MacAutostart(exe);
             Assert.False(autostart.IsEnabled());
         }
         finally
@@ -182,16 +176,20 @@ public class AutostartTests
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
         var exe = Path.Combine(tempDir, "cc-usage-monitor");
+        var prevHome = Environment.GetEnvironmentVariable("HOME");
 
         try
         {
-            var autostart = new MockMacAutostart(exe, tempDir);
+            Environment.SetEnvironmentVariable("HOME", tempDir);
+            var autostart = new MacAutostart(exe);
             autostart.Enable();
             Assert.True(autostart.IsEnabled());
-            Assert.True(File.Exists(autostart.PlistPath));
+            var plistPath = autostart.GetType().GetField("_plistPath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(autostart) as string;
+            Assert.True(File.Exists(plistPath));
         }
         finally
         {
+            Environment.SetEnvironmentVariable("HOME", prevHome);
             Directory.Delete(tempDir, true);
         }
     }
@@ -202,16 +200,20 @@ public class AutostartTests
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
         var exe = Path.Combine(tempDir, "cc-usage-monitor");
+        var prevHome = Environment.GetEnvironmentVariable("HOME");
 
         try
         {
-            var autostart = new MockMacAutostart(exe, tempDir);
+            Environment.SetEnvironmentVariable("HOME", tempDir);
+            var autostart = new MacAutostart(exe);
             autostart.Enable();
-            var plist = File.ReadAllText(autostart.PlistPath);
+            var plistPath = autostart.GetType().GetField("_plistPath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(autostart) as string;
+            var plist = File.ReadAllText(plistPath!);
             Assert.Contains(exe, plist);
         }
         finally
         {
+            Environment.SetEnvironmentVariable("HOME", prevHome);
             Directory.Delete(tempDir, true);
         }
     }
@@ -222,10 +224,12 @@ public class AutostartTests
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
         var exe = Path.Combine(tempDir, "cc-usage-monitor");
+        var prevHome = Environment.GetEnvironmentVariable("HOME");
 
         try
         {
-            var autostart = new MockMacAutostart(exe, tempDir);
+            Environment.SetEnvironmentVariable("HOME", tempDir);
+            var autostart = new MacAutostart(exe);
             autostart.Enable();
             Assert.True(autostart.IsEnabled());
             autostart.Disable();
@@ -233,6 +237,7 @@ public class AutostartTests
         }
         finally
         {
+            Environment.SetEnvironmentVariable("HOME", prevHome);
             Directory.Delete(tempDir, true);
         }
     }
@@ -240,30 +245,20 @@ public class AutostartTests
     [Fact]
     public void MacAutostart_NullExecutable_Throws()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            Assert.Throws<ArgumentNullException>(() => new MockMacAutostart(null!, tempDir));
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
+        Assert.Throws<ArgumentNullException>(() => new MacAutostart(null!));
     }
 
-    // --- LinuxAutostart: file-based tests ---
+    // --- LinuxAutostart: real-class tests with injected dir ---
 
     [Fact]
     public void LinuxAutostart_IsEnabledReturnsFalseWhenNoDesktop()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
-        var exe = Path.Combine(tempDir, "cc-usage-monitor");
+        var tempDir = Directory.CreateTempSubdirectory().FullName;
+        var exe = "/opt/ccum/CC-Usage-Monitor";
 
         try
         {
-            var autostart = new MockLinuxAutostart(exe, tempDir);
+            var autostart = new LinuxAutostart(exe, tempDir);
             Assert.False(autostart.IsEnabled());
         }
         finally
@@ -275,36 +270,15 @@ public class AutostartTests
     [Fact]
     public void LinuxAutostart_EnableCreatesDesktopFile()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
-        var exe = Path.Combine(tempDir, "cc-usage-monitor");
+        var tempDir = Directory.CreateTempSubdirectory().FullName;
+        var exe = "/opt/ccum/CC-Usage-Monitor";
 
         try
         {
-            var autostart = new MockLinuxAutostart(exe, tempDir);
+            var autostart = new LinuxAutostart(exe, tempDir);
             autostart.Enable();
             Assert.True(autostart.IsEnabled());
-            Assert.True(File.Exists(autostart.DesktopPath));
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
-    [Fact]
-    public void LinuxAutostart_EnableDesktopContainsExecutablePath()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
-        var exe = Path.Combine(tempDir, "cc-usage-monitor");
-
-        try
-        {
-            var autostart = new MockLinuxAutostart(exe, tempDir);
-            autostart.Enable();
-            var desktop = File.ReadAllText(autostart.DesktopPath);
-            Assert.Contains(exe, desktop);
+            Assert.True(File.Exists(Path.Combine(tempDir, "cc-usage-monitor.desktop")));
         }
         finally
         {
@@ -315,13 +289,12 @@ public class AutostartTests
     [Fact]
     public void LinuxAutostart_DisableRemovesDesktopFile()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
-        var exe = Path.Combine(tempDir, "cc-usage-monitor");
+        var tempDir = Directory.CreateTempSubdirectory().FullName;
+        var exe = "/opt/ccum/CC-Usage-Monitor";
 
         try
         {
-            var autostart = new MockLinuxAutostart(exe, tempDir);
+            var autostart = new LinuxAutostart(exe, tempDir);
             autostart.Enable();
             Assert.True(autostart.IsEnabled());
             autostart.Disable();
@@ -334,13 +307,87 @@ public class AutostartTests
     }
 
     [Fact]
-    public void LinuxAutostart_NullExecutable_Throws()
+    public void LinuxAutostart_Enable_WritesExactDesktopFile()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(tempDir);
+        var tempDir = Directory.CreateTempSubdirectory().FullName;
+        var exe = "/opt/ccum/CC-Usage-Monitor";
+
         try
         {
-            Assert.Throws<ArgumentNullException>(() => new MockLinuxAutostart(null!, tempDir));
+            new LinuxAutostart(exe, tempDir).Enable();
+            var actual = File.ReadAllText(Path.Combine(tempDir, "cc-usage-monitor.desktop"));
+            var expected =
+                "[Desktop Entry]\n" +
+                "Type=Application\n" +
+                "Name=Claude Code Usage Monitor\n" +
+                "Comment=Claude Code usage limits in your system tray\n" +
+                $"Exec=\"{exe}\"\n" +
+                "Terminal=false\n" +
+                "Hidden=false\n" +
+                "NoDisplay=false\n" +
+                "X-GNOME-Autostart-enabled=true\n";
+            Assert.Equal(expected, actual);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void LinuxAutostart_Enable_QuotesSpaceInPath()
+    {
+        var tempDir = Directory.CreateTempSubdirectory().FullName;
+        var exe = "/home/u/my apps/CC-Usage-Monitor";
+
+        try
+        {
+            new LinuxAutostart(exe, tempDir).Enable();
+            var actual = File.ReadAllText(Path.Combine(tempDir, "cc-usage-monitor.desktop"));
+            var expected =
+                "[Desktop Entry]\n" +
+                "Type=Application\n" +
+                "Name=Claude Code Usage Monitor\n" +
+                "Comment=Claude Code usage limits in your system tray\n" +
+                $"Exec=\"{exe}\"\n" +
+                "Terminal=false\n" +
+                "Hidden=false\n" +
+                "NoDisplay=false\n" +
+                "X-GNOME-Autostart-enabled=true\n";
+            Assert.Equal(expected, actual);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void LinuxAutostart_NullExecutable_Throws()
+    {
+        var tempDir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            Assert.Throws<ArgumentNullException>(() => new LinuxAutostart(null!, tempDir));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void LinuxAutostart_CreatesMissingDir()
+    {
+        var tempDir = Directory.CreateTempSubdirectory().FullName;
+        var exe = "/opt/ccum/CC-Usage-Monitor";
+        var nestedDir = Path.Combine(tempDir, "sub", "autostart");
+
+        try
+        {
+            var autostart = new LinuxAutostart(exe, nestedDir);
+            autostart.Enable();
+            Assert.True(File.Exists(Path.Combine(nestedDir, "cc-usage-monitor.desktop")));
         }
         finally
         {
@@ -354,7 +401,7 @@ public class AutostartTests
     public void AutostartFactory_Create_UsesWindowsAutostart_OnWindows()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return; // Skip on non-Windows
+            return;
 
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
@@ -376,7 +423,7 @@ public class AutostartTests
     public void AutostartFactory_Create_UsesMacAutostart_OnMac()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            return; // Skip on non-macOS
+            return;
 
         var autostart = AutostartFactory.Create("/usr/local/bin/cc-usage-monitor");
         Assert.IsType<MacAutostart>(autostart);
@@ -386,7 +433,7 @@ public class AutostartTests
     public void AutostartFactory_Create_UsesLinuxAutostart_OnLinux()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            return; // Skip on non-Linux
+            return;
 
         var autostart = AutostartFactory.Create("/usr/bin/cc-usage-monitor");
         Assert.IsType<LinuxAutostart>(autostart);
@@ -397,87 +444,5 @@ public class AutostartTests
     {
         Assert.Throws<ArgumentNullException>(() => AutostartFactory.Create(null!));
         Assert.Throws<ArgumentNullException>(() => AutostartFactory.Create(string.Empty));
-    }
-
-    // --- Mock implementations for temp-directory testing ---
-
-    private class MockMacAutostart : IAutostart
-    {
-        private readonly string _plistPath;
-        private readonly string _executablePath;
-
-        public MockMacAutostart(string executablePath, string plistDirectory)
-        {
-            _executablePath = executablePath ?? throw new ArgumentNullException(nameof(executablePath));
-            Directory.CreateDirectory(plistDirectory);
-            _plistPath = Path.Combine(plistDirectory, "com.cc-usage-monitor.plist");
-        }
-
-        public string PlistPath => _plistPath;
-
-        public bool IsEnabled() => File.Exists(_plistPath);
-
-        public void Enable()
-        {
-            var plist = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-<!DOCTYPE plist PUBLIC ""-//Apple//DTD PLIST 1.0//EN"" ""http://www.apple.com/DTDs/PropertyList-1.0.dtd"">
-<plist version=""1.0"">
-<dict>
-    <key>Label</key>
-    <string>com.cc-usage-monitor</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>{_executablePath}</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-";
-            File.WriteAllText(_plistPath, plist);
-        }
-
-        public void Disable()
-        {
-            if (File.Exists(_plistPath))
-                File.Delete(_plistPath);
-        }
-    }
-
-    private class MockLinuxAutostart : IAutostart
-    {
-        private readonly string _desktopPath;
-        private readonly string _executablePath;
-
-        public MockLinuxAutostart(string executablePath, string autostartDirectory)
-        {
-            _executablePath = executablePath ?? throw new ArgumentNullException(nameof(executablePath));
-            Directory.CreateDirectory(autostartDirectory);
-            _desktopPath = Path.Combine(autostartDirectory, "cc-usage-monitor.desktop");
-        }
-
-        public string DesktopPath => _desktopPath;
-
-        public bool IsEnabled() => File.Exists(_desktopPath);
-
-        public void Enable()
-        {
-            var desktop = $@"[Desktop Entry]
-Type=Application
-Name=cc-usage-monitor
-Comment=Claude Code usage monitor
-Exec={_executablePath}
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-";
-            File.WriteAllText(_desktopPath, desktop);
-        }
-
-        public void Disable()
-        {
-            if (File.Exists(_desktopPath))
-                File.Delete(_desktopPath);
-        }
     }
 }
