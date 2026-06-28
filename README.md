@@ -4,12 +4,12 @@ Claude Code usage limits always visible in the system tray.
 
 ![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 ![.NET](https://img.shields.io/badge/.NET-8.0-blue)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgray)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgray)
 ![Avalonia](https://img.shields.io/badge/Avalonia-11.2-43A2DA)
 
 A lightweight tray app that shows your Claude Code session limits so they stay at a glance while you work.
 
-Works on Windows 11/10. macOS and Linux are planned.
+Works on Windows 11/10 and Linux (tested on Kubuntu 24.04 — KDE Plasma, X11). macOS is planned.
 
 ![Claude Code Usage Monitor screenshot](screenshot.jpg)
 
@@ -28,6 +28,20 @@ The app reads **your own** Claude Code login. The credentials the CLI already ke
 
 **Windows:** grab the latest `CC-Usage-Monitor.exe` from
 [Releases](https://github.com/bitlamas/cc-usage-monitor/releases) and run it — no install needed.
+
+**Linux:** grab the `CC-Usage-Monitor` binary (no extension) from
+[Releases](https://github.com/bitlamas/cc-usage-monitor/releases), then:
+
+```bash
+chmod +x CC-Usage-Monitor
+./CC-Usage-Monitor
+```
+
+Self-contained — no .NET needed. The tray uses StatusNotifierItem, so **KDE Plasma works
+out of the box** (tested on Kubuntu 24.04, X11); on GNOME install the AppIndicator
+extension. On a minimal system you may also need fontconfig
+(`sudo apt install -y libfontconfig1`). Turn on **Start at login** from the right-click
+menu for autostart.
 
 **From source** (requires the [.NET 8 SDK](https://dotnet.microsoft.com/download)):
 
