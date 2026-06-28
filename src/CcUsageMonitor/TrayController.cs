@@ -241,6 +241,7 @@ public class TrayController : IDisposable
     private void SyncIcons(AppConfig config)
     {
         List<LimitKind> addOrder;
+        int addGapMs;
         lock (_lock)
         {
             // Desired left-to-right display order = config.SelectedLimits order,
@@ -272,34 +273,25 @@ public class TrayController : IDisposable
             _iconOrder.Clear();
             _iconOrder.AddRange(desired);
 
-            // Tray-icon position on Windows 11 is decided at runtime by Explorer, not by
-            // any settable API. Two empirical rules (verified via UI Automation) drive how
-            // we register, and order matters because most users keep these in the tray
-            // OVERFLOW flyout (the "^" menu), which is a grid:
-            //   1. Explorer BATCHES icons added close together and orders the batch
-            //      arbitrarily — so we must space adds out (see gapMs in AddIconsStaggeredAsync).
-            //   2. The overflow grid puts the MOST-RECENTLY-added icon in the FIRST cell.
-            // Therefore we add in REVERSE of `desired`: desired[0] (the leftmost we want,
-            // e.g. 5-hour) is added LAST, so it lands in the first/leftmost cell.
-            // (A user's manual drag still wins and Windows preserves it.)
-            addOrder = Enumerable.Reverse(desired).ToList();
+            // Add order + inter-add gap are decided per-OS by TrayPlanner.PlanTrayAdds
+            // (Windows: reversed + staggered for Explorer's overflow/batching; Linux: as-is, no gap).
+            var plan = TrayPlanner.PlanTrayAdds(desired, OperatingSystem.IsWindows());
+            addOrder = plan.Order.ToList();
+            addGapMs = plan.GapMs;
         }
 
         _addCts = new CancellationTokenSource();
-        _ = AddIconsStaggeredAsync(addOrder, _addCts.Token);
+        _ = AddIconsStaggeredAsync(addOrder, addGapMs, _addCts.Token);
     }
 
     /// <summary>
-    /// Adds the tray icons one at a time with a delay between each. The gap is essential:
-    /// Explorer batches icons added close together and orders that batch arbitrarily, so
-    /// spacing the adds out makes each a separate, deterministic insert (see SyncIcons for
-    /// the ordering rules). Verified deterministic across repeated cold starts via UIA.
+    /// Adds the tray icons one at a time with a delay between each. The gap is essential
+    /// on Windows (Explorer batches icons added close together and orders that batch
+    /// arbitrarily). On Linux the gap is 0 (no batching issue).
     /// Fire-and-forget from SyncIcons; runs on the UI thread (Avalonia sync context).
     /// </summary>
-    private async Task AddIconsStaggeredAsync(List<LimitKind> addOrder, CancellationToken ct)
+    private async Task AddIconsStaggeredAsync(List<LimitKind> addOrder, int gapMs, CancellationToken ct)
     {
-        const int gapMs = 1500;  // must exceed Explorer's icon-batch window (~sub-second);
-                                 // 1500ms tested reliable, 350ms was inside it (coin-flip)
         var icons = TrayIcon.GetIcons(Application.Current!);
 
         try
