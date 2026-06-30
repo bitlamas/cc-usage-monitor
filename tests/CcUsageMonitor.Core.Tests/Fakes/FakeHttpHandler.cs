@@ -17,6 +17,7 @@ public class FakeHttpHandler : HttpMessageHandler
     private readonly List<HttpRequestMessage> _requests = new();
     private HttpResponseMessage? _defaultResponse;
     private bool _captureRequests = true;
+    private Exception? _throwException;
 
     /// <summary>Set a response for a specific method+URL.</summary>
     public void SetResponse(string method, string url, HttpResponseMessage response)
@@ -28,6 +29,12 @@ public class FakeHttpHandler : HttpMessageHandler
     public void SetDefaultResponse(HttpResponseMessage response)
     {
         _defaultResponse = response;
+    }
+
+    /// <summary>Make SendAsync throw the given exception (simulates transport failure).</summary>
+    public void SetThrow(Exception ex)
+    {
+        _throwException = ex;
     }
 
     /// <summary>Whether to capture requests for inspection.</summary>
@@ -47,6 +54,9 @@ public class FakeHttpHandler : HttpMessageHandler
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (_throwException is not null)
+            return Task.FromException<HttpResponseMessage>(_throwException);
+
         if (_captureRequests)
             _requests.Add(request);
 

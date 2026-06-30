@@ -59,7 +59,8 @@ public class UsageClient : IUsageClient
                 BuildEmptySnapshot(),
                 DateTimeOffset.UtcNow,
                 Error: "Not logged in to Claude Code",
-                Stale: true);
+                Stale: true,
+                ErrorKind: ErrorKind.NotLoggedIn);
         }
 
         var result = await TryFetch(token, ct).ConfigureAwait(false);
@@ -84,6 +85,18 @@ public class UsageClient : IUsageClient
             // If token is still null after refresh, return the original error
         }
 
+        // Classify the 401-after-refresh snapshot
+        if (result.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            return new UsageSnapshot(
+                result.Snapshot.Limits,
+                result.Snapshot.UpdatedAt,
+                Error: "HTTP 401 after refresh",
+                Stale: true,
+                ErrorKind: ErrorKind.CliRequiredForReauth,
+                RetryAfterSeconds: null);
+        }
+
         return result.Snapshot;
     }
 
@@ -103,11 +116,13 @@ public class UsageClient : IUsageClient
         }
         catch (Exception ex)
         {
+            // Transport failure — set NetworkError at the catch site
             return new FetchResult(new UsageSnapshot(
                 BuildEmptySnapshot(),
                 DateTimeOffset.UtcNow,
                 Error: SanitizeError(ex.Message),
-                Stale: true), HttpStatusCode.ServiceUnavailable);
+                Stale: true,
+                ErrorKind: ErrorKind.NetworkError), HttpStatusCode.ServiceUnavailable);
         }
 
         var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -117,11 +132,18 @@ public class UsageClient : IUsageClient
             var error = response.StatusCode == HttpStatusCode.Unauthorized
                 ? "HTTP 401 after refresh"
                 : $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
+            ErrorKind kind = response.StatusCode switch
+            {
+                HttpStatusCode.TooManyRequests => ErrorKind.RateLimited,
+                _ => ErrorKind.ServerError,
+            };
             return new FetchResult(new UsageSnapshot(
                 BuildEmptySnapshot(),
                 DateTimeOffset.UtcNow,
                 Error: error,
-                Stale: true), response.StatusCode);
+                Stale: true,
+                ErrorKind: kind,
+                RetryAfterSeconds: kind == ErrorKind.RateLimited ? ParseRetryAfter(response.Headers) : null), response.StatusCode);
         }
 
         try
@@ -135,7 +157,8 @@ public class UsageClient : IUsageClient
                 BuildEmptySnapshot(),
                 DateTimeOffset.UtcNow,
                 Error: "Failed to parse usage response",
-                Stale: true), HttpStatusCode.InternalServerError);
+                Stale: true,
+                ErrorKind: ErrorKind.ServerError), HttpStatusCode.InternalServerError);
         }
     }
 
@@ -145,6 +168,26 @@ public class UsageClient : IUsageClient
         foreach (var kind in LimitKindMapping.AllKinds)
             dict[kind] = new LimitState(null, null, Present: false);
         return dict;
+    }
+
+    /// <summary>
+    /// Parses the Retry-After header as delta-seconds only.
+    /// HTTP-date or non-integer forms return null.
+    /// </summary>
+    private static int? ParseRetryAfter(System.Net.Http.Headers.HttpResponseHeaders headers)
+    {
+        // .NET's RetryConditionHeaderValue only exposes Date (HTTP-date).
+        // Delta-seconds form is not exposed as a separate property —
+        // parse the raw header value manually.
+        if (headers.TryGetValues("Retry-After", out var vals))
+        {
+            foreach (var v in vals)
+            {
+                if (int.TryParse(v, out var n))
+                    return n;
+            }
+        }
+        return null;
     }
 
     /// <summary>
