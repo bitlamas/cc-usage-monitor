@@ -140,10 +140,13 @@ public class Poller
             }
         }
 
+        // Honest "updated" time: report when the data was actually fresh
         return new UsageSnapshot(
             mergedLimits,
-            stale.UpdatedAt,
+            lastGood.UpdatedAt,
             stale.Error,
-            Stale: true);
+            Stale: true,
+            ErrorKind: stale.ErrorKind,
+            RetryAfterSeconds: stale.RetryAfterSeconds);
     }
 }
