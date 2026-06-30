@@ -11,4 +11,6 @@ public record UsageSnapshot(
     IReadOnlyDictionary<LimitKind, LimitState> Limits,
     DateTimeOffset UpdatedAt,
     string? Error,
-    bool Stale);
+    bool Stale,
+    Core.Services.ErrorKind? ErrorKind = null,
+    int? RetryAfterSeconds = null);
