@@ -126,10 +126,7 @@ public class TrayController : IDisposable
                     var icon = RenderRing(state, showNumber, warnThreshold, alertThreshold);
                     trayIcon.Icon = icon;
 
-                    var tooltip = UsageText.Tooltip(kind, state, snapshot.UpdatedAt, now);
-                    if (snapshot.Stale)
-                        tooltip = BuildStaleTooltip(kind, state, snapshot.UpdatedAt, now, snapshot.Error);
-                    trayIcon.ToolTipText = tooltip;
+                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, state, snapshot.UpdatedAt, now, snapshot.ErrorKind);
                 }
                 else
                 {
@@ -137,7 +134,7 @@ public class TrayController : IDisposable
                     var dimState = new LimitState(null, null, false);
                     var icon = RenderRing(dimState, showNumber, warnThreshold, alertThreshold);
                     trayIcon.Icon = icon;
-                    trayIcon.ToolTipText = UsageText.Tooltip(kind, dimState, snapshot.UpdatedAt, now);
+                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, dimState, snapshot.UpdatedAt, now, snapshot.ErrorKind);
                 }
             }
         }
@@ -563,13 +560,6 @@ public class TrayController : IDisposable
         LimitKind.WeeklyOpus => "Weekly (Opus)",
         _ => kind.ToString()
     };
-
-    private string BuildStaleTooltip(LimitKind kind, LimitState state, DateTimeOffset updatedAt, DateTimeOffset now, string? error)
-    {
-        var baseTooltip = UsageText.Tooltip(kind, state, updatedAt, now);
-        var reason = string.IsNullOrEmpty(error) ? "data may be stale" : error;
-        return $"{baseTooltip} — stale ({reason})";
-    }
 
     public void Dispose()
     {

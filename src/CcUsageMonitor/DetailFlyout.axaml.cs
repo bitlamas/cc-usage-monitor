@@ -88,10 +88,9 @@ public partial class DetailFlyout : Window
         LimitsList!.ItemsSource = items;
         UpdatedText!.Text = $"updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}";
 
-        StaleText!.IsVisible = snapshot.Stale;
-        StaleText!.Text = snapshot.Stale
-            ? (string.IsNullOrEmpty(snapshot.Error) ? "Data may be stale" : snapshot.Error)
-            : string.Empty;
+        var line = UsageText.FlyoutErrorLine(snapshot.ErrorKind);
+        StaleText!.IsVisible = line is not null;
+        StaleText!.Text = line ?? string.Empty;
     }
 
     private static IBrush BandBrush(BandType band) => band switch
