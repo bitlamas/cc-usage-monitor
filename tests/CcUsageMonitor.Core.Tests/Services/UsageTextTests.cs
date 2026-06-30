@@ -226,4 +226,121 @@ public class UsageTextTests
         var result = UsageText.Countdown(resetsAt, Now);
         Assert.Equal("1h 0m", result);
     }
+
+    // §8.1 — TrayTooltip tests
+    [Fact]
+    public void TrayTooltip_RateLimited_IsSilent() // A8.1 — the bug case
+    {
+        var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
+        var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
+        Assert.Equal("5-hour · 0% · Resets in 4h 51m",
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.RateLimited));
+    }
+
+    [Fact]
+    public void TrayTooltip_NetworkError_IsSilent() // A8.2
+    {
+        var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
+        var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
+        Assert.Equal("5-hour · 0% · Resets in 4h 51m",
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NetworkError));
+    }
+
+    [Fact]
+    public void TrayTooltip_ServerError_IsSilent() // A8.3
+    {
+        var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
+        var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
+        Assert.Equal("5-hour · 0% · Resets in 4h 51m",
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.ServerError));
+    }
+
+    [Fact]
+    public void TrayTooltip_NullErrorKind_IsSilent() // A8.4
+    {
+        var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
+        var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
+        Assert.Equal("5-hour · 0% · Resets in 4h 51m",
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, null));
+    }
+
+    [Fact]
+    public void TrayTooltip_NotLoggedIn_AppendsError() // A8.5
+    {
+        var now = DateTimeOffset.Parse("2026-06-30T03:20:00-04:00");
+        var state = new LimitState(null, null, Present: false);
+        Assert.Equal("5-hour · --% · Updated 03:20 — Not logged in to Claude Code",
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NotLoggedIn));
+    }
+
+    [Fact]
+    public void TrayTooltip_CliRequiredForReauth_AppendsError() // A8.6
+    {
+        var now = DateTimeOffset.Parse("2026-06-30T03:20:00-04:00");
+        var state = new LimitState(null, null, Present: false);
+        Assert.Equal("5-hour · --% · Updated 03:20 — Claude Code CLI required for re-auth",
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.CliRequiredForReauth));
+    }
+
+    [Fact]
+    public void TrayTooltip_EmDashIsUnicode() // A8.7
+    {
+        var now = DateTimeOffset.Parse("2026-06-30T03:20:00-04:00");
+        var state = new LimitState(null, null, Present: false);
+        var actual = UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NotLoggedIn);
+        Assert.Contains("\u2014", actual); // U+2014 EmDash, not ASCII hyphen
+    }
+
+    // §8.2 — FlyoutErrorLine tests
+    [Fact]
+    public void FlyoutErrorLine_RateLimited_ReturnsNull() // A8.10 — the bug case
+    {
+        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.RateLimited));
+    }
+
+    [Fact]
+    public void FlyoutErrorLine_NetworkErrorAndServerError_ReturnNull() // A8.11
+    {
+        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.NetworkError));
+        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.ServerError));
+    }
+
+    [Fact]
+    public void FlyoutErrorLine_NotLoggedIn_ReturnsFriendlyText() // A8.12
+    {
+        Assert.Equal("Not logged in to Claude Code", UsageText.FlyoutErrorLine(ErrorKind.NotLoggedIn));
+    }
+
+    [Fact]
+    public void FlyoutErrorLine_CliRequiredForReauth_ReturnsFriendlyText() // A8.12
+    {
+        Assert.Equal("Claude Code CLI required for re-auth", UsageText.FlyoutErrorLine(ErrorKind.CliRequiredForReauth));
+    }
+
+    [Fact]
+    public void FlyoutErrorLine_Null_ReturnsNull() // A8.13
+    {
+        Assert.Null(UsageText.FlyoutErrorLine(null));
+    }
+
+    // §8.3 — Updated-time timezone fix
+    [Fact]
+    public void Tooltip_UpdatedRendersInNowOffset_Eastern() // A8.14
+    {
+        var updated = DateTimeOffset.Parse("2026-06-30T13:44:00+00:00"); // UTC
+        var now = DateTimeOffset.Parse("2026-06-30T09:44:00-04:00");     // Eastern
+        var state = new LimitState(0, null, Present: true);
+        Assert.Equal("5-hour · 0% · Updated 09:44",
+            UsageText.Tooltip(LimitKind.Session5h, state, updated, now));
+    }
+
+    [Fact]
+    public void Tooltip_UpdatedRendersInNowOffset_UTC() // A8.15
+    {
+        var updated = DateTimeOffset.Parse("2026-06-30T13:44:00+00:00");
+        var now = DateTimeOffset.Parse("2026-06-30T13:44:00+00:00");
+        var state = new LimitState(0, null, Present: true);
+        Assert.Equal("5-hour · 0% · Updated 13:44",
+            UsageText.Tooltip(LimitKind.Session5h, state, updated, now));
+    }
 }

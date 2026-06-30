@@ -48,7 +48,7 @@ public static class UsageText
     {
         var shortLabel = ShortLabel(kind);
         var pct = state.Pct is null ? "--" : state.Pct.Value.ToString();
-        var resetInfo = ResetPhrase(state.ResetsAt, now) ?? $"Updated {updatedAt:HH:mm}";
+        var resetInfo = ResetPhrase(state.ResetsAt, now) ?? $"Updated {updatedAt.ToOffset(now.Offset):HH:mm}";
         return $"{shortLabel} · {pct}% · {resetInfo}";
     }
 
@@ -122,4 +122,22 @@ public static class UsageText
         ErrorKind.NetworkError => "Network error — data may be stale",
         _ => "Unknown error"
     };
+
+    /// <summary>Tray tooltip: silent for transient errors, appends actionable error message.</summary>
+    public static string TrayTooltip(
+        LimitKind kind, LimitState state, DateTimeOffset updatedAt, DateTimeOffset now, ErrorKind? errorKind)
+    {
+        var baseText = Tooltip(kind, state, updatedAt, now);
+        if (errorKind is null || ErrorPolicy.IsTransient(errorKind.Value))
+            return baseText;
+        return $"{baseText} {EmDash} {ErrorTooltip(errorKind.Value)}";
+    }
+
+    /// <summary>Detail flyout error line: actionable messages only; null means no line.</summary>
+    public static string? FlyoutErrorLine(ErrorKind? kind)
+    {
+        if (kind is null || ErrorPolicy.IsTransient(kind.Value))
+            return null;
+        return ErrorTooltip(kind.Value);
+    }
 }
