@@ -40,14 +40,12 @@ public class TrayController : IDisposable
     private readonly object _lock = new();
     private UsageSnapshot? _latestSnapshot;
 
-    // Limits the user can choose in v1, in default left-to-right display order.
-    // WeeklyOpus is intentionally omitted — the API doesn't expose it yet, so it
-    // stays hidden until a future version (Core still accepts it; we filter here).
+    // Limits the user can choose, in default left-to-right display order.
     private static readonly LimitKind[] SelectableKinds =
     {
         LimitKind.Session5h,
         LimitKind.WeeklyAll,
-        LimitKind.WeeklySonnet,
+        LimitKind.WeeklyFable,
     };
 
     private static readonly List<LimitKind> DefaultLimits = new()
@@ -174,7 +172,7 @@ public class TrayController : IDisposable
     {
         var menu = new NativeMenu();
 
-        // Checkable limit items — fixed v1 set in stable order (WeeklyOpus hidden).
+        // Checkable limit items — fixed selectable set in stable order.
         _limitMenuItems.Clear();
         foreach (var kind in SelectableKinds)
         {
@@ -242,7 +240,7 @@ public class TrayController : IDisposable
         lock (_lock)
         {
             // Desired left-to-right display order = config.SelectedLimits order,
-            // filtered to the v1-selectable kinds (drops a stray WeeklyOpus etc.).
+            // filtered to the selectable kinds (drops any unknown/non-selectable kind).
             var desired = config.SelectedLimits
                 .Where(SelectableKinds.Contains)
                 .Distinct()
@@ -397,8 +395,8 @@ public class TrayController : IDisposable
             selected.Add(kind);
             // Re-order to the canonical left-to-right sequence (SelectableKinds) so a
             // re-enabled limit returns to its proper slot instead of being appended on
-            // the right. Any non-selectable kinds (e.g. a stray WeeklyOpus) are kept,
-            // trailing, so toggling never silently drops them from config.
+            // the right. Any non-selectable kinds are kept, trailing, so toggling never
+            // silently drops them from config.
             selected = SelectableKinds.Where(selected.Contains)
                 .Concat(selected.Where(k => !SelectableKinds.Contains(k)))
                 .ToList();
@@ -556,8 +554,7 @@ public class TrayController : IDisposable
     {
         LimitKind.Session5h => "5-hour session",
         LimitKind.WeeklyAll => "Weekly (all models)",
-        LimitKind.WeeklySonnet => "Weekly (Sonnet)",
-        LimitKind.WeeklyOpus => "Weekly (Opus)",
+        LimitKind.WeeklyFable => "Weekly (Fable)",
         _ => kind.ToString()
     };
 

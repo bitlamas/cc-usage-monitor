@@ -5,17 +5,16 @@ namespace CcUsageMonitor.Core.Tests.Models;
 
 public class LimitKindMappingTests
 {
-    // Bucket keys per spec §5
+    // Bucket keys per spec §5 (seven_day_fable is a synthetic key — Fable is sourced
+    // from the API limits[] array, not a top-level bucket).
     private const string BucketSession5h = "five_hour";
     private const string BucketWeeklyAll = "seven_day";
-    private const string BucketWeeklySonnet = "seven_day_sonnet";
-    private const string BucketWeeklyOpus = "seven_day_opus";
+    private const string BucketWeeklyFable = "seven_day_fable";
 
     // Display labels per spec §5
     private const string LabelSession5h = "5-hour session";
     private const string LabelWeeklyAll = "Weekly (all models)";
-    private const string LabelWeeklySonnet = "Weekly (Sonnet)";
-    private const string LabelWeeklyOpus = "Weekly (Opus)";
+    private const string LabelWeeklyFable = "Weekly (Fable)";
 
     [Fact]
     public void LimitKind_Session5h_MapsToCorrectBucketKey()
@@ -31,22 +30,15 @@ public class LimitKindMappingTests
     }
 
     [Fact]
-    public void LimitKind_WeeklySonnet_MapsToCorrectBucketKey()
+    public void LimitKind_WeeklyFable_MapsToCorrectBucketKey()
     {
-        Assert.Equal(BucketWeeklySonnet, LimitKindMapping.GetBucketKey(LimitKind.WeeklySonnet));
-    }
-
-    [Fact]
-    public void LimitKind_WeeklyOpus_MapsToCorrectBucketKey()
-    {
-        Assert.Equal(BucketWeeklyOpus, LimitKindMapping.GetBucketKey(LimitKind.WeeklyOpus));
+        Assert.Equal(BucketWeeklyFable, LimitKindMapping.GetBucketKey(LimitKind.WeeklyFable));
     }
 
     [Theory]
     [InlineData(LimitKind.Session5h, LabelSession5h)]
     [InlineData(LimitKind.WeeklyAll, LabelWeeklyAll)]
-    [InlineData(LimitKind.WeeklySonnet, LabelWeeklySonnet)]
-    [InlineData(LimitKind.WeeklyOpus, LabelWeeklyOpus)]
+    [InlineData(LimitKind.WeeklyFable, LabelWeeklyFable)]
     public void LimitKind_MapsToCorrectLabel(LimitKind kind, string expectedLabel)
     {
         Assert.Equal(expectedLabel, LimitKindMapping.GetLabel(kind));
@@ -55,8 +47,7 @@ public class LimitKindMappingTests
     [Theory]
     [InlineData(BucketSession5h, LimitKind.Session5h)]
     [InlineData(BucketWeeklyAll, LimitKind.WeeklyAll)]
-    [InlineData(BucketWeeklySonnet, LimitKind.WeeklySonnet)]
-    [InlineData(BucketWeeklyOpus, LimitKind.WeeklyOpus)]
+    [InlineData(BucketWeeklyFable, LimitKind.WeeklyFable)]
     public void LimitKind_RoundTripBucketKey(string bucketKey, LimitKind expectedKind)
     {
         Assert.Equal(expectedKind, LimitKindMapping.GetKindFromBucketKey(bucketKey));
@@ -65,8 +56,7 @@ public class LimitKindMappingTests
     [Theory]
     [InlineData(LabelSession5h, LimitKind.Session5h)]
     [InlineData(LabelWeeklyAll, LimitKind.WeeklyAll)]
-    [InlineData(LabelWeeklySonnet, LimitKind.WeeklySonnet)]
-    [InlineData(LabelWeeklyOpus, LimitKind.WeeklyOpus)]
+    [InlineData(LabelWeeklyFable, LimitKind.WeeklyFable)]
     public void LimitKind_RoundTripLabel(string label, LimitKind expectedKind)
     {
         Assert.Equal(expectedKind, LimitKindMapping.GetKindFromLabel(label));
@@ -79,9 +69,25 @@ public class LimitKindMappingTests
     }
 
     [Fact]
+    public void LimitKind_RemovedSonnetBucketKey_ReturnsNull()
+    {
+        // Sonnet/Opus buckets were removed in v1.2.0 — they must no longer resolve.
+        Assert.Null(LimitKindMapping.GetKindFromBucketKey("seven_day_sonnet"));
+        Assert.Null(LimitKindMapping.GetKindFromBucketKey("seven_day_opus"));
+    }
+
+    [Fact]
     public void LimitKind_UnknownLabel_ReturnsNull()
     {
         Assert.Null(LimitKindMapping.GetKindFromLabel("Unknown Label"));
+    }
+
+    [Fact]
+    public void LimitKind_AllKinds_IsExactlyThree()
+    {
+        Assert.Equal(
+            new[] { LimitKind.Session5h, LimitKind.WeeklyAll, LimitKind.WeeklyFable },
+            LimitKindMapping.AllKinds);
     }
 
     [Fact]

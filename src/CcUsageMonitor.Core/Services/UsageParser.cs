@@ -15,10 +15,13 @@ public static class UsageParser
     private static readonly string[] TargetBuckets =
     {
         "five_hour",
-        "seven_day",
-        "seven_day_sonnet",
-        "seven_day_opus"
+        "seven_day"
     };
+
+    // The scoped weekly limit we surface as WeeklyFable is identified in the API's
+    // limits[] array by kind + model display name (case-sensitive, matches the API).
+    private const string ScopedWeeklyKind = "weekly_scoped";
+    private const string FableModelDisplayName = "Fable";
 
     /// <summary>
     /// Parses the JSON response body into a UsageSnapshot.
@@ -48,32 +51,74 @@ public static class UsageParser
                 continue;
             }
 
-            var present = true;
-
-            // Check utilization
-            int? pct = null;
-            if (bucket.TryGetProperty("utilization", out var utilProp) && utilProp.ValueKind == JsonValueKind.Number)
-            {
-                // Round-half-up (AwayFromZero), not banker's rounding
-                pct = (int)Math.Round(utilProp.GetDouble(), MidpointRounding.AwayFromZero);
-            }
-
-            // Check resets_at
-            DateTimeOffset? resetsAt = null;
-            if (bucket.TryGetProperty("resets_at", out var resetsProp) && resetsProp.ValueKind == JsonValueKind.String)
-            {
-                var resetsStr = resetsProp.GetString();
-                if (resetsStr != null && DateTimeOffset.TryParse(resetsStr, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
-                    resetsAt = parsed;
-            }
-
-            limits[kind] = new LimitState(pct, resetsAt, present);
+            // Top-level buckets carry the percentage under "utilization".
+            var pct = ReadPercent(bucket, "utilization");
+            var resetsAt = ReadResetsAt(bucket);
+            limits[kind] = new LimitState(pct, resetsAt, Present: true);
         }
+
+        // WeeklyFable is not a top-level bucket: it lives in the limits[] array as a
+        // weekly_scoped entry scoped to the "Fable" model. Absent → Present: false.
+        limits[LimitKind.WeeklyFable] = ParseFable(root);
 
         return new UsageSnapshot(
             new Dictionary<LimitKind, LimitState>(limits),
             DateTimeOffset.UtcNow,
             Error: null,
             Stale: false);
+    }
+
+    /// <summary>
+    /// Finds the Fable weekly limit in the limits[] array. Returns an absent LimitState
+    /// (Present: false) when the array, the weekly_scoped/Fable entry, or the scope is missing.
+    /// </summary>
+    private static LimitState ParseFable(JsonElement root)
+    {
+        if (!root.TryGetProperty("limits", out var limitsArr) || limitsArr.ValueKind != JsonValueKind.Array)
+            return new LimitState(null, null, Present: false);
+
+        foreach (var entry in limitsArr.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (!entry.TryGetProperty("kind", out var kindProp) ||
+                kindProp.ValueKind != JsonValueKind.String ||
+                kindProp.GetString() != ScopedWeeklyKind)
+                continue;
+
+            if (!entry.TryGetProperty("scope", out var scope) || scope.ValueKind != JsonValueKind.Object ||
+                !scope.TryGetProperty("model", out var model) || model.ValueKind != JsonValueKind.Object ||
+                !model.TryGetProperty("display_name", out var name) || name.ValueKind != JsonValueKind.String ||
+                name.GetString() != FableModelDisplayName)
+                continue;
+
+            // Scoped limits carry the percentage under "percent" (already 0–100).
+            var pct = ReadPercent(entry, "percent");
+            var resetsAt = ReadResetsAt(entry);
+            return new LimitState(pct, resetsAt, Present: true);
+        }
+
+        return new LimitState(null, null, Present: false);
+    }
+
+    /// <summary>Reads a numeric percentage field, round-half-up (AwayFromZero). Null when absent/non-numeric.</summary>
+    private static int? ReadPercent(JsonElement obj, string property)
+    {
+        if (obj.TryGetProperty(property, out var prop) && prop.ValueKind == JsonValueKind.Number)
+            return (int)Math.Round(prop.GetDouble(), MidpointRounding.AwayFromZero);
+        return null;
+    }
+
+    /// <summary>Reads and parses the "resets_at" ISO-8601 string. Null when absent/null/unparseable.</summary>
+    private static DateTimeOffset? ReadResetsAt(JsonElement obj)
+    {
+        if (obj.TryGetProperty("resets_at", out var prop) && prop.ValueKind == JsonValueKind.String)
+        {
+            var s = prop.GetString();
+            if (s != null && DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                return parsed;
+        }
+        return null;
     }
 }

@@ -7,12 +7,14 @@
     "utilization": 125.0,
     "resets_at": "2026-06-22T00:00:00+00:00"
   },
-  "seven_day_sonnet": {
-    "utilization": 50.0,
-    "resets_at": null
-  },
-  "seven_day_opus": {
-    "utilization": 10.0,
-    "resets_at": "2026-06-20T00:00:00+00:00"
-  }
+  "limits": [
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 62.5,
+      "resets_at": "2026-06-21T10:00:00+00:00",
+      "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null },
+      "is_active": true
+    }
+  ]
 }

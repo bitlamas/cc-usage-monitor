@@ -105,8 +105,7 @@ public partial class DetailFlyout : Window
     {
         LimitKind.Session5h => "5-hour session",
         LimitKind.WeeklyAll => "Weekly (all models)",
-        LimitKind.WeeklySonnet => "Weekly (Sonnet)",
-        LimitKind.WeeklyOpus => "Weekly (Opus)",
+        LimitKind.WeeklyFable => "Weekly (Fable)",
         _ => kind.ToString()
     };
 

@@ -100,8 +100,8 @@ public class UsageTextTests
     public void UsageText_Tooltip_NullReset_ShowsUpdated()
     {
         var state = new LimitState(25, null, true);
-        var expected = "Weekly (Sonnet) · 25% · Updated 14:05";
-        var actual = UsageText.Tooltip(LimitKind.WeeklySonnet, state, UpdatedAt, Now);
+        var expected = "Weekly (Fable) · 25% · Updated 14:05";
+        var actual = UsageText.Tooltip(LimitKind.WeeklyFable, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
     }
@@ -120,8 +120,8 @@ public class UsageTextTests
     public void UsageText_Tooltip_NullPct_NullReset()
     {
         var state = new LimitState(null, null, true);
-        var expected = "Weekly (Sonnet) · --% · Updated 14:05";
-        var actual = UsageText.Tooltip(LimitKind.WeeklySonnet, state, UpdatedAt, Now);
+        var expected = "Weekly (Fable) · --% · Updated 14:05";
+        var actual = UsageText.Tooltip(LimitKind.WeeklyFable, state, UpdatedAt, Now);
         Assert.Equal(expected, actual);
         Assert.DoesNotContain("resets in", actual);
     }

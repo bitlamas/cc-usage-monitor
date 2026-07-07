@@ -27,7 +27,7 @@ public class UsageParserTests
         // Assert
         Assert.Null(snapshot.Error);
         Assert.False(snapshot.Stale);
-        Assert.Equal(4, snapshot.Limits.Count);
+        Assert.Equal(3, snapshot.Limits.Count);
 
         Assert.True(snapshot.Limits[LimitKind.Session5h].Present);
         Assert.Equal(72, snapshot.Limits[LimitKind.Session5h].Pct);
@@ -36,28 +36,95 @@ public class UsageParserTests
         Assert.True(snapshot.Limits[LimitKind.WeeklyAll].Present);
         Assert.Equal(46, snapshot.Limits[LimitKind.WeeklyAll].Pct); // 45.5 → 46 (AwayFromZero)
 
-        Assert.True(snapshot.Limits[LimitKind.WeeklySonnet].Present);
-        Assert.Equal(60, snapshot.Limits[LimitKind.WeeklySonnet].Pct);
-        Assert.Null(snapshot.Limits[LimitKind.WeeklySonnet].ResetsAt);
+        Assert.True(snapshot.Limits[LimitKind.WeeklyFable].Present);
+        Assert.Equal(63, snapshot.Limits[LimitKind.WeeklyFable].Pct);
+        Assert.NotNull(snapshot.Limits[LimitKind.WeeklyFable].ResetsAt);
+    }
 
-        Assert.True(snapshot.Limits[LimitKind.WeeklyOpus].Present);
-        Assert.Equal(10, snapshot.Limits[LimitKind.WeeklyOpus].Pct);
+    #endregion
+
+    #region Fable (limits[] array) parsing
+
+    [Fact]
+    public void UsageParser_Parse_Fable_ReadsResetsAtFromScopedEntry()
+    {
+        // Arrange
+        var json = GetFixture("usage_full.json");
+
+        // Act
+        var snapshot = UsageParser.Parse(json);
+
+        // Assert — Fable's reset is 2026-06-21T10:00:00Z from the weekly_scoped entry
+        var resets = snapshot.Limits[LimitKind.WeeklyFable].ResetsAt;
+        Assert.NotNull(resets);
+        Assert.Equal(new DateTimeOffset(2026, 6, 21, 10, 0, 0, TimeSpan.Zero), resets!.Value);
     }
 
     [Fact]
-    public void UsageParser_Parse_MissingOpusBucket_OpusAbsent()
+    public void UsageParser_Parse_Fable_PercentRoundsHalfUp()
     {
-        // Arrange — seven_day_opus key is completely absent
-        var json = GetFixture("usage_missing_opus.json");
+        // Arrange — usage_rounding.json Fable percent is 62.5
+        var json = GetFixture("usage_rounding.json");
+
+        // Act
+        var snapshot = UsageParser.Parse(json);
+
+        // Assert — 62.5 → 63 (AwayFromZero)
+        Assert.True(snapshot.Limits[LimitKind.WeeklyFable].Present);
+        Assert.Equal(63, snapshot.Limits[LimitKind.WeeklyFable].Pct);
+    }
+
+    [Fact]
+    public void UsageParser_Parse_NoLimitsArray_FableAbsent()
+    {
+        // Arrange — usage_null_utilization.json has no limits[] array at all
+        var json = GetFixture("usage_null_utilization.json");
 
         // Act
         var snapshot = UsageParser.Parse(json);
 
         // Assert
-        Assert.False(snapshot.Limits[LimitKind.WeeklyOpus].Present);
-        Assert.Null(snapshot.Limits[LimitKind.WeeklyOpus].Pct);
-        Assert.Null(snapshot.Limits[LimitKind.WeeklyOpus].ResetsAt);
+        Assert.False(snapshot.Limits[LimitKind.WeeklyFable].Present);
+        Assert.Null(snapshot.Limits[LimitKind.WeeklyFable].Pct);
+        Assert.Null(snapshot.Limits[LimitKind.WeeklyFable].ResetsAt);
     }
+
+    [Fact]
+    public void UsageParser_Parse_LimitsArrayWithoutFable_FableAbsent()
+    {
+        // Arrange — limits[] present but the only weekly_scoped entry is model "Sonnet"
+        var json = GetFixture("usage_no_fable.json");
+
+        // Act
+        var snapshot = UsageParser.Parse(json);
+
+        // Assert — a non-Fable scoped model must NOT be mistaken for Fable
+        Assert.False(snapshot.Limits[LimitKind.WeeklyFable].Present);
+        Assert.Null(snapshot.Limits[LimitKind.WeeklyFable].Pct);
+    }
+
+    [Fact]
+    public void UsageParser_Parse_FableMatchIsCaseSensitive()
+    {
+        // Arrange — "fable" (lowercase) must not match the exact API display name "Fable"
+        var json = @"{
+            ""five_hour"": {""utilization"": 10.0},
+            ""limits"": [
+                {""kind"": ""weekly_scoped"", ""percent"": 63,
+                 ""scope"": {""model"": {""display_name"": ""fable""}}}
+            ]
+        }";
+
+        // Act
+        var snapshot = UsageParser.Parse(json);
+
+        // Assert
+        Assert.False(snapshot.Limits[LimitKind.WeeklyFable].Present);
+    }
+
+    #endregion
+
+    #region Edge cases
 
     [Fact]
     public void UsageParser_Parse_NullUtilization_PctNull()
@@ -76,13 +143,6 @@ public class UsageParserTests
         // five_hour: no utilization key at all → Pct = null
         Assert.True(snapshot.Limits[LimitKind.Session5h].Present);
         Assert.Null(snapshot.Limits[LimitKind.Session5h].Pct);
-
-        // seven_day_sonnet: entire bucket is null JSON → Present = false
-        Assert.False(snapshot.Limits[LimitKind.WeeklySonnet].Present);
-
-        // seven_day_opus: normal
-        Assert.True(snapshot.Limits[LimitKind.WeeklyOpus].Present);
-        Assert.Equal(5, snapshot.Limits[LimitKind.WeeklyOpus].Pct);
     }
 
     [Fact]
@@ -99,9 +159,6 @@ public class UsageParserTests
 
         // 125.0 → 125 (unclamped, per spec)
         Assert.Equal(125, snapshot.Limits[LimitKind.WeeklyAll].Pct);
-
-        // 50.0 → 50
-        Assert.Equal(50, snapshot.Limits[LimitKind.WeeklySonnet].Pct);
     }
 
     [Fact]
@@ -126,38 +183,20 @@ public class UsageParserTests
     }
 
     [Fact]
-    public void UsageParser_Parse_NullSonnetResetsAt_KeptNull()
-    {
-        // Arrange
-        var json = GetFixture("usage_full.json");
-
-        // Act
-        var snapshot = UsageParser.Parse(json);
-
-        // Assert
-        Assert.Null(snapshot.Limits[LimitKind.WeeklySonnet].ResetsAt);
-    }
-
-    [Fact]
     public void UsageParser_Parse_IgnoresUnknownBuckets()
     {
         // Arrange
-        var json = GetFixture("usage_full.json"); // includes seven_day_cowork, tangelo
+        var json = GetFixture("usage_full.json"); // includes seven_day_cowork, tangelo, dead sonnet/opus
 
         // Act
         var snapshot = UsageParser.Parse(json);
 
-        // Assert — only the 4 target keys should be in Limits
-        Assert.Equal(4, snapshot.Limits.Count);
+        // Assert — only the 3 target kinds should be in Limits
+        Assert.Equal(3, snapshot.Limits.Count);
         Assert.Contains(LimitKind.Session5h, snapshot.Limits.Keys);
         Assert.Contains(LimitKind.WeeklyAll, snapshot.Limits.Keys);
-        Assert.Contains(LimitKind.WeeklySonnet, snapshot.Limits.Keys);
-        Assert.Contains(LimitKind.WeeklyOpus, snapshot.Limits.Keys);
+        Assert.Contains(LimitKind.WeeklyFable, snapshot.Limits.Keys);
     }
-
-    #endregion
-
-    #region Edge cases
 
     [Fact]
     public void UsageParser_Parse_EmptyBody_AllAbsent()
@@ -169,7 +208,7 @@ public class UsageParserTests
         var snapshot = UsageParser.Parse(json);
 
         // Assert
-        Assert.Equal(4, snapshot.Limits.Count);
+        Assert.Equal(3, snapshot.Limits.Count);
         Assert.All(snapshot.Limits.Values, s => Assert.False(s.Present));
     }
 
@@ -205,9 +244,7 @@ public class UsageParserTests
         // Arrange
         var json = @"{
             ""five_hour"": {""utilization"": 50.0, ""resets_at"": ""2026-06-18T18:49:59.201483+00:00""},
-            ""seven_day"": {""utilization"": 30.0, ""resets_at"": ""2026-06-22T00:00:00.000000+00:00""},
-            ""seven_day_sonnet"": {""utilization"": 20.0, ""resets_at"": null},
-            ""seven_day_opus"": {""utilization"": 10.0, ""resets_at"": ""2026-06-20T00:00:00+00:00""}
+            ""seven_day"": {""utilization"": 30.0, ""resets_at"": ""2026-06-22T00:00:00.000000+00:00""}
         }";
 
         // Act
@@ -216,7 +253,8 @@ public class UsageParserTests
         // Assert
         Assert.NotNull(snapshot.Limits[LimitKind.Session5h].ResetsAt);
         Assert.Equal(TimeSpan.Zero, snapshot.Limits[LimitKind.Session5h].ResetsAt!.Value.Offset);
-        Assert.Null(snapshot.Limits[LimitKind.WeeklySonnet].ResetsAt);
+        // Fable is absent when no limits[] array is present
+        Assert.False(snapshot.Limits[LimitKind.WeeklyFable].Present);
     }
 
     #endregion

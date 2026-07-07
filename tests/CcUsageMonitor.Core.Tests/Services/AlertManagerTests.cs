@@ -20,8 +20,7 @@ public class AlertManagerTests
         var dict = new Dictionary<LimitKind, LimitState>();
         dict[LimitKind.Session5h] = new LimitState(session5hPct, DateTimeOffset.Parse("2026-06-19T18:00:00+00:00"), true);
         dict[LimitKind.WeeklyAll] = new LimitState(weeklyAllPct, weeklyAllResetsAt != null ? DateTimeOffset.Parse(weeklyAllResetsAt) : null, true);
-        dict[LimitKind.WeeklySonnet] = new LimitState(null, null, false);
-        dict[LimitKind.WeeklyOpus] = new LimitState(null, null, false);
+        dict[LimitKind.WeeklyFable] = new LimitState(null, null, false);
         return dict;
     }
 

@@ -45,7 +45,7 @@ public class UsageSnapshotTests
             limits[kind] = new LimitState(50, new DateTimeOffset(2026, 6, 21, 9, 0, 0, TimeSpan.Zero), true);
         }
         var snapshot = new UsageSnapshot(limits, UpdatedAt, null, false);
-        Assert.Equal(4, snapshot.Limits.Count);
+        Assert.Equal(3, snapshot.Limits.Count);
     }
 
     [Fact]
@@ -54,11 +54,11 @@ public class UsageSnapshotTests
         var limits = new Dictionary<LimitKind, LimitState>
         {
             { LimitKind.Session5h, new LimitState(42, new DateTimeOffset(2026, 6, 18, 16, 5, 0, TimeSpan.Zero), true) },
-            { LimitKind.WeeklyOpus, new LimitState(null, null, false) }
+            { LimitKind.WeeklyFable, new LimitState(null, null, false) }
         };
         var snapshot = new UsageSnapshot(limits, UpdatedAt, null, false);
         Assert.True(snapshot.Limits[LimitKind.Session5h].Present);
-        Assert.False(snapshot.Limits[LimitKind.WeeklyOpus].Present);
+        Assert.False(snapshot.Limits[LimitKind.WeeklyFable].Present);
     }
 
     [Fact]

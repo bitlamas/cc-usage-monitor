@@ -42,7 +42,7 @@ public class ConfigStoreTests
     {
         var store = new ConfigStore(_tempDir);
         var original = new AppConfig(
-            new List<LimitKind> { LimitKind.Session5h, LimitKind.WeeklySonnet },
+            new List<LimitKind> { LimitKind.Session5h, LimitKind.WeeklyFable },
             true,
             false,
             85,
@@ -225,12 +225,28 @@ public class ConfigStoreTests
     }
 
     [Fact]
-    public void ConfigStore_SelectedLimitsOnlyNotPresentKind_Kept()
+    public void ConfigStore_RemovedLimitNames_DroppedFallBackToDefaults()
     {
-        var json = "{\"selectedLimits\": [\"WeeklyOpus\"]}";
+        // WeeklySonnet/WeeklyOpus were removed in v1.2.0. An old config that selected
+        // only those must sanitize to the defaults (never an empty/crashing set).
+        var json = "{\"selectedLimits\": [\"WeeklySonnet\", \"WeeklyOpus\"]}";
         File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
         var config = new ConfigStore(_tempDir).Load();
-        Assert.Single(config.SelectedLimits, LimitKind.WeeklyOpus);
+        Assert.Equal(
+            new[] { LimitKind.Session5h, LimitKind.WeeklyAll },
+            config.SelectedLimits);
+    }
+
+    [Fact]
+    public void ConfigStore_RemovedLimitName_DroppedButValidKept()
+    {
+        // A mixed old config keeps the still-valid kinds and drops the removed one.
+        var json = "{\"selectedLimits\": [\"Session5h\", \"WeeklySonnet\", \"WeeklyFable\"]}";
+        File.WriteAllText(Path.Combine(_tempDir, "config.json"), json);
+        var config = new ConfigStore(_tempDir).Load();
+        Assert.Equal(
+            new[] { LimitKind.Session5h, LimitKind.WeeklyFable },
+            config.SelectedLimits);
     }
 
     // Colors validation
@@ -305,7 +321,7 @@ public class ConfigStoreTests
     public void ConfigStore_AllFieldsPresent_RoundTrip()
     {
         var json = @"{
-            ""selectedLimits"": [""Session5h"", ""WeeklyAll"", ""WeeklySonnet""],
+            ""selectedLimits"": [""Session5h"", ""WeeklyAll"", ""WeeklyFable""],
             ""showNumberInRing"": true,
             ""alertsEnabled"": true,
             ""alertThreshold"": 85,
@@ -318,7 +334,7 @@ public class ConfigStoreTests
         var config = new ConfigStore(_tempDir).Load();
         Assert.Single(config.SelectedLimits, LimitKind.Session5h);
         Assert.Single(config.SelectedLimits, LimitKind.WeeklyAll);
-        Assert.Single(config.SelectedLimits, LimitKind.WeeklySonnet);
+        Assert.Single(config.SelectedLimits, LimitKind.WeeklyFable);
         Assert.Equal(3, config.SelectedLimits.Count);
         Assert.True(config.ShowNumberInRing);
         Assert.True(config.AlertsEnabled);

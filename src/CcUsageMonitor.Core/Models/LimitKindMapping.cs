@@ -6,12 +6,15 @@ namespace CcUsageMonitor.Core.Models;
 /// </summary>
 public static class LimitKindMapping
 {
+    // Note: WeeklyFable's usage is NOT a top-level bucket — it comes from the API's
+    // `limits[]` array (a `weekly_scoped` entry with scope.model.display_name = "Fable").
+    // "seven_day_fable" is a stable synthetic key so GetLabel/AllKinds stay uniform; the
+    // parser never resolves Fable via GetKindFromBucketKey.
     private static readonly Dictionary<LimitKind, (string BucketKey, string Label)> Mapping = new()
     {
         { LimitKind.Session5h, ("five_hour", "5-hour session") },
         { LimitKind.WeeklyAll, ("seven_day", "Weekly (all models)") },
-        { LimitKind.WeeklySonnet, ("seven_day_sonnet", "Weekly (Sonnet)") },
-        { LimitKind.WeeklyOpus, ("seven_day_opus", "Weekly (Opus)") }
+        { LimitKind.WeeklyFable, ("seven_day_fable", "Weekly (Fable)") }
     };
 
     private static readonly Dictionary<string, LimitKind> BucketKeyToKind = Mapping.ToDictionary(

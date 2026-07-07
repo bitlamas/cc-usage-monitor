@@ -15,7 +15,7 @@ Works on Windows 11/10 and Linux (tested on Kubuntu 24.04 — KDE Plasma, X11). 
 
 ## Options / features
 
-- Pick your limits (right-click): 5-hour, Weekly (all), Weekly (Sonnet).
+- Pick your limits (right-click): 5-hour, Weekly (all), Weekly (Fable).
 - Hover for the exact figure: `5-hour · 82% · Resets in 2h 13m`.
 - Right-click to open settings: toggle limits, force a refresh, start at login, open the config file.
 

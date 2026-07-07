@@ -41,7 +41,7 @@ public static class UsageText
 
     /// <summary>
     /// Simplified tooltip: "{shortLabel} · {pct}% · {reset info}"
-    /// Short label: "5-hour", "Weekly", "Weekly (Sonnet)", "Weekly (Opus)"
+    /// Short label: "5-hour", "Weekly", "Weekly (Fable)"
     /// Reset info: "Resets in ~{countdown}" | "Resetting" | "Updated {HH:mm}"
     /// </summary>
     public static string Tooltip(LimitKind kind, LimitState state, DateTimeOffset updatedAt, DateTimeOffset now)
@@ -73,8 +73,7 @@ public static class UsageText
     {
         LimitKind.Session5h => "5-hour",
         LimitKind.WeeklyAll => "Weekly",
-        LimitKind.WeeklySonnet => "Weekly (Sonnet)",
-        LimitKind.WeeklyOpus => "Weekly (Opus)",
+        LimitKind.WeeklyFable => "Weekly (Fable)",
         _ => LimitKindMapping.GetLabel(kind)
     };
 

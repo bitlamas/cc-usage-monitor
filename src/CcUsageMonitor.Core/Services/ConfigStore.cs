@@ -112,7 +112,7 @@ public class ConfigStore : IConfigStore
         if (raw == null || raw.Count == 0)
             return defaults;
 
-        var validNames = new HashSet<string> { "Session5h", "WeeklyAll", "WeeklySonnet", "WeeklyOpus" };
+        var validNames = new HashSet<string> { "Session5h", "WeeklyAll", "WeeklyFable" };
         var seen = new HashSet<string>();
         var result = new List<LimitKind>();
 
