@@ -13,4 +13,5 @@ public record UsageSnapshot(
     string? Error,
     bool Stale,
     Core.Services.ErrorKind? ErrorKind = null,
-    int? RetryAfterSeconds = null);
+    int? RetryAfterSeconds = null,
+    int ConsecutiveFailures = 0);

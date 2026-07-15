@@ -84,4 +84,15 @@ public class UsageSnapshotTests
         var s2 = new UsageSnapshot(limits, dt, null, false);
         Assert.Equal(s1, s2);
     }
+
+    [Fact] // A4.0 — back-compat: defaulted field is 0
+    public void UsageSnapshot_DefaultConsecutiveFailuresZero()
+    {
+        var limits = new Dictionary<LimitKind, LimitState>
+        {
+            { LimitKind.Session5h, new LimitState(42, UpdatedAt, true) }
+        };
+        var snapshot = new UsageSnapshot(limits, UpdatedAt, null, false);
+        Assert.Equal(0, snapshot.ConsecutiveFailures);
+    }
 }
