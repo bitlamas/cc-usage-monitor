@@ -134,7 +134,7 @@ public class TrayController : IDisposable
                     var icon = RenderRing(state, showNumber, warnThreshold, alertThreshold);
                     trayIcon.Icon = icon;
 
-                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, state, snapshot.UpdatedAt, now, snapshot.ErrorKind);
+                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, state, snapshot.UpdatedAt, now, snapshot.ErrorKind, snapshot.ConsecutiveFailures);
                 }
                 else
                 {
@@ -142,7 +142,7 @@ public class TrayController : IDisposable
                     var dimState = new LimitState(null, null, false);
                     var icon = RenderRing(dimState, showNumber, warnThreshold, alertThreshold);
                     trayIcon.Icon = icon;
-                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, dimState, snapshot.UpdatedAt, now, snapshot.ErrorKind);
+                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, dimState, snapshot.UpdatedAt, now, snapshot.ErrorKind, snapshot.ConsecutiveFailures);
                 }
             }
         }

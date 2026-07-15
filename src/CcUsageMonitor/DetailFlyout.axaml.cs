@@ -98,7 +98,7 @@ public partial class DetailFlyout : Window
         LimitsList!.ItemsSource = items;
         UpdatedText!.Text = $"updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}";
 
-        var line = UsageText.FlyoutErrorLine(snapshot.ErrorKind);
+        var line = UsageText.FlyoutErrorLine(snapshot.ErrorKind, snapshot.ConsecutiveFailures);
         StaleText!.IsVisible = line is not null;
         StaleText!.Text = line ?? string.Empty;
     }
