@@ -227,100 +227,106 @@ public class UsageTextTests
         Assert.Equal("1h 0m", result);
     }
 
-    // §8.1 — TrayTooltip tests
-    [Fact]
-    public void TrayTooltip_RateLimited_IsSilent() // A8.1 — the bug case
+    // §8.1 — TrayTooltip tests (A8.10-A8.16: gated on ShouldSurface)
+    // Base tooltip for Session5h pct=0, resetsAt=now+4h51m: "5-hour · 0% · Resets in 4h 51m"
+    // For actionable rows: pct=null, resetsAt=null, updatedAt/now wall-clock 03:20 → "Updated 03:20"
+
+    [Fact] // A8.10
+    public void TrayTooltip_RateLimited_SilentRegardlessOfCount()
     {
         var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
         var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
         Assert.Equal("5-hour · 0% · Resets in 4h 51m",
-            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.RateLimited));
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.RateLimited, 5));
     }
 
-    [Fact]
-    public void TrayTooltip_NetworkError_IsSilent() // A8.2
+    [Fact] // A8.11
+    public void TrayTooltip_NetworkError_SilentRegardlessOfCount()
     {
         var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
         var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
         Assert.Equal("5-hour · 0% · Resets in 4h 51m",
-            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NetworkError));
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NetworkError, 99));
     }
 
-    [Fact]
-    public void TrayTooltip_ServerError_IsSilent() // A8.3
+    [Fact] // A8.12
+    public void TrayTooltip_Success_Unchanged()
     {
         var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
         var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
         Assert.Equal("5-hour · 0% · Resets in 4h 51m",
-            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.ServerError));
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, null, 0));
     }
 
-    [Fact]
-    public void TrayTooltip_NullErrorKind_IsSilent() // A8.4
+    [Fact] // A8.13 — below threshold: silent, no suffix
+    public void TrayTooltip_ReauthBelowThreshold_Silent()
     {
-        var now = DateTimeOffset.Parse("2026-06-30T09:00:00-04:00");
-        var state = new LimitState(0, now.AddHours(4).AddMinutes(51), Present: true);
-        Assert.Equal("5-hour · 0% · Resets in 4h 51m",
-            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, null));
+        var now = DateTimeOffset.Parse("2026-07-14T03:20:00-04:00");
+        var state = new LimitState(null, null, false);
+        var r = UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.CliRequiredForReauth, 2);
+        Assert.Equal("5-hour · --% · Updated 03:20", r);
+        Assert.DoesNotContain("re-auth", r);
+        Assert.DoesNotContain("\u2014", r);
     }
 
-    [Fact]
-    public void TrayTooltip_NotLoggedIn_AppendsError() // A8.5
+    [Fact] // A8.14 — at threshold: surfaces with em-dash suffix
+    public void TrayTooltip_ReauthAtThreshold_Surfaces()
     {
-        var now = DateTimeOffset.Parse("2026-06-30T03:20:00-04:00");
-        var state = new LimitState(null, null, Present: false);
-        Assert.Equal("5-hour · --% · Updated 03:20 — Not logged in to Claude Code",
-            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NotLoggedIn));
-    }
-
-    [Fact]
-    public void TrayTooltip_CliRequiredForReauth_AppendsError() // A8.6
-    {
-        var now = DateTimeOffset.Parse("2026-06-30T03:20:00-04:00");
-        var state = new LimitState(null, null, Present: false);
+        var now = DateTimeOffset.Parse("2026-07-14T03:20:00-04:00");
+        var state = new LimitState(null, null, false);
         Assert.Equal("5-hour · --% · Updated 03:20 — Claude Code CLI required for re-auth",
-            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.CliRequiredForReauth));
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.CliRequiredForReauth, 3));
     }
 
-    [Fact]
-    public void TrayTooltip_EmDashIsUnicode() // A8.7
+    [Fact] // A8.15
+    public void TrayTooltip_NotLoggedIn_Immediate()
     {
-        var now = DateTimeOffset.Parse("2026-06-30T03:20:00-04:00");
-        var state = new LimitState(null, null, Present: false);
-        var actual = UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NotLoggedIn);
-        Assert.Contains("\u2014", actual); // U+2014 EmDash, not ASCII hyphen
+        var now = DateTimeOffset.Parse("2026-07-14T03:20:00-04:00");
+        var state = new LimitState(null, null, false);
+        Assert.Equal("5-hour · --% · Updated 03:20 — Not logged in to Claude Code",
+            UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.NotLoggedIn, 0));
     }
 
-    // §8.2 — FlyoutErrorLine tests
-    [Fact]
-    public void FlyoutErrorLine_RateLimited_ReturnsNull() // A8.10 — the bug case
+    [Fact] // A8.16 — em-dash glyph check
+    public void TrayTooltip_ReauthEmDashIsUnicode()
     {
-        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.RateLimited));
+        var now = DateTimeOffset.Parse("2026-07-14T03:20:00-04:00");
+        var state = new LimitState(null, null, false);
+        var actual = UsageText.TrayTooltip(LimitKind.Session5h, state, now, now, ErrorKind.CliRequiredForReauth, 3);
+        Assert.Contains("\u2014", actual); // U+2014 EmDash
     }
 
-    [Fact]
-    public void FlyoutErrorLine_NetworkErrorAndServerError_ReturnNull() // A8.11
+    // §8.2 — FlyoutErrorLine tests (A8.17-A8.21: gated on ShouldSurface)
+    [Fact] // A8.17
+    public void FlyoutErrorLine_RateLimited_ReturnsNull()
     {
-        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.NetworkError));
-        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.ServerError));
+        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.RateLimited, 99));
     }
 
-    [Fact]
-    public void FlyoutErrorLine_NotLoggedIn_ReturnsFriendlyText() // A8.12
+    [Fact] // A8.18
+    public void FlyoutErrorLine_ReauthBelowThreshold_ReturnsNull()
     {
-        Assert.Equal("Not logged in to Claude Code", UsageText.FlyoutErrorLine(ErrorKind.NotLoggedIn));
+        Assert.Null(UsageText.FlyoutErrorLine(ErrorKind.CliRequiredForReauth, 2));
     }
 
-    [Fact]
-    public void FlyoutErrorLine_CliRequiredForReauth_ReturnsFriendlyText() // A8.12
+    [Fact] // A8.19
+    public void FlyoutErrorLine_ReauthAtThreshold_ReturnsText()
     {
-        Assert.Equal("Claude Code CLI required for re-auth", UsageText.FlyoutErrorLine(ErrorKind.CliRequiredForReauth));
+        Assert.Equal("Claude Code CLI required for re-auth",
+            UsageText.FlyoutErrorLine(ErrorKind.CliRequiredForReauth, 3));
     }
 
-    [Fact]
-    public void FlyoutErrorLine_Null_ReturnsNull() // A8.13
+    [Fact] // A8.20
+    public void FlyoutErrorLine_NotLoggedIn_ReturnsText()
     {
-        Assert.Null(UsageText.FlyoutErrorLine(null));
+        Assert.Equal("Not logged in to Claude Code",
+            UsageText.FlyoutErrorLine(ErrorKind.NotLoggedIn, 0));
+    }
+
+    [Fact] // A8.21
+    public void FlyoutErrorLine_Null_ReturnsNull()
+    {
+        Assert.Null(UsageText.FlyoutErrorLine(null, 5));
     }
 
     // §8.3 — Updated-time timezone fix
