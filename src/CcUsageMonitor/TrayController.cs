@@ -28,6 +28,7 @@ public class TrayController : IDisposable
     private readonly INotificationSink _notificationSink;
     private readonly AlertManager _alertManager;
     private readonly string _configDir;
+    private readonly ILog _log;
     private readonly CancellationTokenSource _appCts = new();
 
     private readonly Dictionary<LimitKind, TrayIcon> _trayIcons = new();
@@ -60,7 +61,8 @@ public class TrayController : IDisposable
         IAutostart autostart,
         INotificationSink notificationSink,
         AlertManager alertManager,
-        string configDir)
+        string configDir,
+        ILog? log = null)
     {
         _poller = poller;
         _configStore = configStore;
@@ -68,6 +70,7 @@ public class TrayController : IDisposable
         _notificationSink = notificationSink;
         _alertManager = alertManager;
         _configDir = configDir;
+        _log = log ?? new NullLog();
 
         // Wire AlertManager as subscriber BEFORE starting poller
         _poller.SnapshotPublished += _alertManager.OnSnapshot;
@@ -99,8 +102,15 @@ public class TrayController : IDisposable
         // Poller fires on a background thread; marshal all tray UI updates to the UI thread.
         Dispatcher.UIThread.Post(() =>
         {
-            RenderSnapshot(snapshot);
-            UpdateLimitMenuItems();
+            try
+            {
+                RenderSnapshot(snapshot);
+                UpdateLimitMenuItems();
+            }
+            catch (Exception ex)
+            {
+                _log.Exception(LogLevel.Error, "RenderSnapshot", ex);
+            }
         });
     }
 
@@ -347,20 +357,31 @@ public class TrayController : IDisposable
         {
             // Superseded by a newer SyncIcons — nothing to do.
         }
+        catch (Exception ex)
+        {
+            _log.Exception(LogLevel.Error, "AddIcons", ex);
+        }
     }
 
     private void OnTrayIconClicked(object? sender, EventArgs e)
     {
-        // Left-click → toggle detail flyout
-        if (_flyout != null && _flyout.IsVisible)
+        try
         {
-            _flyout.Close();
+            // Left-click → toggle detail flyout
+            if (_flyout != null && _flyout.IsVisible)
+            {
+                _flyout.Close();
+            }
+            else
+            {
+                _flyout = new DetailFlyout(_poller, _configStore) { Anchor = GetCursorPosition() };
+                _flyout.Closed += (_, _) => { lock (_lock) { _flyout = null; } };
+                _flyout.Show();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _flyout = new DetailFlyout(_poller, _configStore) { Anchor = GetCursorPosition() };
-            _flyout.Closed += (_, _) => { lock (_lock) { _flyout = null; } };
-            _flyout.Show();
+            _log.Exception(LogLevel.Error, "Flyout", ex);
         }
     }
 

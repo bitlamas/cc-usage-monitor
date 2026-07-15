@@ -49,7 +49,17 @@ public partial class DetailFlyout : Window
         InitializeComponent();
 
         // Same delegate instance for subscribe/unsubscribe.
-        _snapshotHandler = _ => Dispatcher.UIThread.Post(() => { if (_poller.Current != null) UpdateDisplay(_poller.Current); });
+        _snapshotHandler = _ => Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                if (_poller.Current != null) UpdateDisplay(_poller.Current);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log.Exception(LogLevel.Error, "Flyout", ex);
+            }
+        });
 
         // Dismiss on focus loss.
         this.Deactivated += (_, _) => Close();

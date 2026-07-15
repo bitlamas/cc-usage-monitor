@@ -1,6 +1,4 @@
 using System;
-using System.IO;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -20,8 +18,8 @@ public class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        // Build the DI-like container
-        var configDir = ResolveConfigDir();
+        // Use the config dir resolved once in Program.cs — single source of truth.
+        var configDir = Diagnostics.ConfigDir;
         // Environment.ProcessPath is the actual running executable — correct for a
         // single-file publish (where Assembly.Location is empty) and for normal builds.
         var exeFullPath = Environment.ProcessPath!;
@@ -31,7 +29,7 @@ public class App : Application
         var usageClient = new UsageClient(credentialStore);
         var clock = new SystemClock();
         var config = configStore.Load();
-        var poller = new Poller(usageClient, clock, config.PollIntervalSeconds);
+        var poller = new Poller(usageClient, clock, config.PollIntervalSeconds, Diagnostics.Log);
         var notificationSink = new SystemNotificationSink();
         var alertManager = new AlertManager(
             notificationSink,
@@ -40,7 +38,7 @@ public class App : Application
             config.WarnThreshold);
         var autostart = AutostartFactory.Create(exeFullPath);
 
-        _trayController = new TrayController(poller, configStore, autostart, notificationSink, alertManager, configDir);
+        _trayController = new TrayController(poller, configStore, autostart, notificationSink, alertManager, configDir, Diagnostics.Log);
 
         // Start the poller FIRST so a usage snapshot is in flight before the tray icons
         // are built. Initialize()'s staggered add waits briefly for that first snapshot
@@ -52,27 +50,6 @@ public class App : Application
 
         // Tray-only headless app — no main window.
         base.OnFrameworkInitializationCompleted();
-    }
-
-    private static string ResolveConfigDir()
-    {
-        var os = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
-        if (os.Contains("Windows"))
-        {
-            var appData = Environment.GetEnvironmentVariable("APPDATA")
-                          ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            return Path.Combine(appData, "cc-usage-monitor");
-        }
-        if (os.Contains("Darwin"))
-        {
-            var home = Environment.GetEnvironmentVariable("HOME");
-            return Path.Combine(home!, "Library", "Application Support", "cc-usage-monitor");
-        }
-        // Linux
-        var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
-        var homeLinux = Environment.GetEnvironmentVariable("HOME");
-        var configHome = !string.IsNullOrEmpty(xdg) ? xdg : Path.Combine(homeLinux!, ".config");
-        return Path.Combine(configHome!, "cc-usage-monitor");
     }
 }
 

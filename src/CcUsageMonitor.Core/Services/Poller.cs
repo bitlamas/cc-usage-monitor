@@ -15,6 +15,7 @@ public class Poller
     private readonly IUsageClient _usageClient;
     private readonly IClock _clock;
     private readonly int _pollIntervalSeconds;
+    private readonly ILog _log;
     private Task? _runningTask;
     private CancellationTokenSource? _cts;
 
@@ -37,11 +38,12 @@ public class Poller
     /// <summary>
     /// Creates a Poller with a custom interval and clock.
     /// </summary>
-    public Poller(IUsageClient usageClient, IClock clock, int pollIntervalSeconds)
+    public Poller(IUsageClient usageClient, IClock clock, int pollIntervalSeconds, ILog? log = null)
     {
         _usageClient = usageClient;
         _clock = clock;
         _pollIntervalSeconds = pollIntervalSeconds;
+        _log = log ?? new NullLog();
     }
 
     /// <summary>
@@ -79,7 +81,14 @@ public class Poller
 
     private async Task RunLoop(CancellationToken ct)
     {
-        await FetchAndPublish(ct).ConfigureAwait(false);
+        try
+        {
+            await FetchAndPublish(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _log.Exception(LogLevel.Error, "Poll", ex);
+        }
 
         while (!ct.IsCancellationRequested)
         {
@@ -92,7 +101,14 @@ public class Poller
                 break;
             }
 
-            await FetchAndPublish(ct).ConfigureAwait(false);
+            try
+            {
+                await FetchAndPublish(ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.Exception(LogLevel.Error, "Poll", ex);
+            }
         }
     }
 
@@ -114,6 +130,9 @@ public class Poller
 
         Current = snapshot;
         SnapshotPublished?.Invoke(snapshot);
+
+        // Diagnostic poll log line
+        _log.Write(snapshot.ErrorKind is null ? LogLevel.Info : LogLevel.Warn, LogFormat.Poll(snapshot));
     }
 
     private static UsageSnapshot MergeWithLastGood(UsageSnapshot stale, UsageSnapshot lastGood)
