@@ -39,10 +39,14 @@ public class LogFormatTests
     [Fact] // A4.9c — invariant culture
     public void Line_InvariantUnderCulture()
     {
+        // fi-FI's time separator is "." (not ":"), so under this culture a format string built
+        // WITHOUT CultureInfo.InvariantCulture emits "18.54.03" — this test actually catches a
+        // dropped invariant pin. (de-DE, the original choice, uses ":" like invariant and so
+        // passes either way, making it an inert guard.)
         var prev = CultureInfo.CurrentCulture;
         try
         {
-            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            CultureInfo.CurrentCulture = new CultureInfo("fi-FI");
             var ts = DateTimeOffset.Parse("2026-07-14T18:54:03.123-04:00");
             Assert.Equal("2026-07-14 18:54:03.123 -04:00 [ERROR] boom", LogFormat.Line(ts, LogLevel.Error, "boom"));
         }

@@ -13,6 +13,11 @@ public sealed class FileLog : ILog
     private readonly long _maxSizeBytes;
     private readonly object _lock = new();
 
+    // UTF-8 WITHOUT a BOM — File.AppendAllText(Encoding.UTF8) emits an EF BB BF prefix on a
+    // fresh/rotated file, which would corrupt the first line (the startup line) and any strict
+    // line-prefix parse. Encode raw UTF-8 bytes only.
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     /// <summary>
     /// Creates a FileLog. Ensures the directory exists and rolls if the log exceeds maxSizeBytes.
     /// maxSizeBytes default 5_000_000 (5 MB); keeps ONE rolled backup (.log.1).
@@ -24,19 +29,31 @@ public sealed class FileLog : ILog
         _maxSizeBytes = maxSizeBytes;
         _clock = clock ?? new SystemClock();
 
-        // Ensure directory exists
-        Directory.CreateDirectory(Path.GetDirectoryName(logFilePath)!);
-
-        // Rotation is checked ONLY at construction (launch)
-        if (File.Exists(logFilePath))
+        // Best-effort setup — MUST NEVER throw. A logger that aborts construction would kill
+        // startup (and the global handlers aren't installed yet), turning the diagnostics feature
+        // into the very invisible crash it exists to eliminate. If any of this fails (locked
+        // .log.1, read-only/full disk, long path), degrade to a no-op sink: Write/Exception below
+        // already swallow, so the app runs on without logs rather than not at all.
+        try
         {
-            var currentSize = new FileInfo(logFilePath).Length;
-            if (LogRotation.ShouldRoll(currentSize, maxSizeBytes))
+            // Ensure directory exists
+            Directory.CreateDirectory(Path.GetDirectoryName(logFilePath)!);
+
+            // Rotation is checked ONLY at construction (launch)
+            if (File.Exists(logFilePath))
             {
-                if (File.Exists(rolledFilePath))
-                    File.Delete(rolledFilePath);
-                File.Move(logFilePath, rolledFilePath);
+                var currentSize = new FileInfo(logFilePath).Length;
+                if (LogRotation.ShouldRoll(currentSize, maxSizeBytes))
+                {
+                    if (File.Exists(rolledFilePath))
+                        File.Delete(rolledFilePath);
+                    File.Move(logFilePath, rolledFilePath);
+                }
             }
+        }
+        catch
+        {
+            // Swallow all — a logger must not crash the app.
         }
     }
 
@@ -48,7 +65,7 @@ public sealed class FileLog : ILog
             lock (_lock)
             {
                 var line = LogFormat.Line(_clock.Now, level, message) + Environment.NewLine;
-                File.AppendAllText(_logFilePath, line, Encoding.UTF8);
+                File.AppendAllText(_logFilePath, line, Utf8NoBom);
             }
         }
         catch
@@ -66,11 +83,11 @@ public sealed class FileLog : ILog
             {
                 var msg = $"{context}: {ex?.GetType().Name}: {ex?.Message}";
                 var line = LogFormat.Line(_clock.Now, level, msg) + Environment.NewLine;
-                File.AppendAllText(_logFilePath, line, Encoding.UTF8);
+                File.AppendAllText(_logFilePath, line, Utf8NoBom);
 
                 if (ex?.StackTrace is not null)
                 {
-                    File.AppendAllText(_logFilePath, ex.StackTrace + Environment.NewLine, Encoding.UTF8);
+                    File.AppendAllText(_logFilePath, ex.StackTrace + Environment.NewLine, Utf8NoBom);
                 }
             }
         }
