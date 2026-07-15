@@ -16,6 +16,9 @@ public class Poller
     private readonly IClock _clock;
     private readonly int _pollIntervalSeconds;
     private readonly ILog _log;
+    private readonly Func<int, CancellationToken, Task> _delay;
+    private int _consecutiveFailures;
+    private readonly object _lock = new();
     private Task? _runningTask;
     private CancellationTokenSource? _cts;
 
@@ -38,12 +41,13 @@ public class Poller
     /// <summary>
     /// Creates a Poller with a custom interval and clock.
     /// </summary>
-    public Poller(IUsageClient usageClient, IClock clock, int pollIntervalSeconds, ILog? log = null)
+    public Poller(IUsageClient usageClient, IClock clock, int pollIntervalSeconds, ILog? log = null, Func<int, CancellationToken, Task>? delay = null)
     {
         _usageClient = usageClient;
         _clock = clock;
         _pollIntervalSeconds = pollIntervalSeconds;
         _log = log ?? new NullLog();
+        _delay = delay ?? ((s, ct) => Task.Delay(TimeSpan.FromSeconds(s), ct));
     }
 
     /// <summary>
@@ -94,9 +98,12 @@ public class Poller
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(_pollIntervalSeconds), ct).ConfigureAwait(false);
+                var secs = PollScheduler.NextDelaySeconds(
+                    Current?.ErrorKind, Current?.RetryAfterSeconds, _pollIntervalSeconds,
+                    Current?.ConsecutiveFailures ?? 0);
+                await _delay(secs, ct).ConfigureAwait(false);
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException)
             {
                 break;
             }
@@ -122,17 +129,25 @@ public class Poller
     {
         var snapshot = await fetchTask.ConfigureAwait(false);
 
-        // Merge with last-good values
+        // Merge with last-good values (MergeWithLastGood rebuilds via ctor, so ConsecutiveFailures defaults to 0)
         if (snapshot.Stale && Current != null)
         {
             snapshot = MergeWithLastGood(snapshot, Current);
         }
 
-        Current = snapshot;
-        SnapshotPublished?.Invoke(snapshot);
+        // Update counter and stamp under lock (thread-safe with ForceRefreshAsync overlap)
+        UsageSnapshot stamped;
+        lock (_lock)
+        {
+            _consecutiveFailures = snapshot.ErrorKind is null ? 0 : _consecutiveFailures + 1;
+            stamped = snapshot with { ConsecutiveFailures = _consecutiveFailures };
+            Current = stamped;
+        }
 
-        // Diagnostic poll log line
-        _log.Write(snapshot.ErrorKind is null ? LogLevel.Info : LogLevel.Warn, LogFormat.Poll(snapshot));
+        SnapshotPublished?.Invoke(stamped);
+
+        // Diagnostic poll log line (on the stamped snapshot, outside the lock)
+        _log.Write(stamped.ErrorKind is null ? LogLevel.Info : LogLevel.Warn, LogFormat.Poll(stamped));
     }
 
     private static UsageSnapshot MergeWithLastGood(UsageSnapshot stale, UsageSnapshot lastGood)
