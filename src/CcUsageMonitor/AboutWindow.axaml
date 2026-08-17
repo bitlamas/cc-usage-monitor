@@ -44,6 +44,10 @@
 
       <TextBlock x:Name="VersionText" Text="Version 1.0.0" FontSize="12" Foreground="#857F75"/>
 
+      <!-- Only shown once a check has been requested from the tray menu. -->
+      <TextBlock x:Name="UpdateStatusText" Text="" FontSize="12" Foreground="#857F75"
+                 IsVisible="False" TextWrapping="Wrap"/>
+
       <TextBlock Text="Claude Code usage limits in your system tray."
                  FontSize="12.5" Foreground="#C9C4BA" TextWrapping="Wrap"/>
 

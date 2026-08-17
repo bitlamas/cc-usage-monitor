@@ -30,6 +30,7 @@ public class TrayController : IDisposable
     private readonly AlertManager _alertManager;
     private readonly string _configDir;
     private readonly ILog _log;
+    private readonly IUpdateClient _updateClient;
     private readonly CancellationTokenSource _appCts = new();
 
     private readonly Dictionary<LimitKind, TrayIcon> _trayIcons = new();
@@ -68,7 +69,8 @@ public class TrayController : IDisposable
         INotificationSink notificationSink,
         AlertManager alertManager,
         string configDir,
-        ILog? log = null)
+        ILog? log = null,
+        IUpdateClient? updateClient = null)
     {
         _poller = poller;
         _configStore = configStore;
@@ -77,6 +79,7 @@ public class TrayController : IDisposable
         _alertManager = alertManager;
         _configDir = configDir;
         _log = log ?? new NullLog();
+        _updateClient = updateClient ?? new GitHubUpdateClient();
 
         // Wire AlertManager as subscriber BEFORE starting poller
         _poller.SnapshotPublished += _alertManager.OnSnapshot;
@@ -294,6 +297,11 @@ public class TrayController : IDisposable
         menu.Items.Add(openConfigItem);
 
         menu.Items.Add(new NativeMenuItemSeparator());
+
+        // Check for updates — opens About and reports the result there.
+        var updateItem = new NativeMenuItem { Header = "Check for updates…" };
+        updateItem.Click += (_, _) => ShowAbout(checkForUpdates: true);
+        menu.Items.Add(updateItem);
 
         // About
         var aboutItem = new NativeMenuItem { Header = "About" };
@@ -553,16 +561,31 @@ public class TrayController : IDisposable
         }
     }
 
-    private void ShowAbout()
+    private void ShowAbout(bool checkForUpdates = false)
     {
-        if (_about != null && _about.IsVisible)
+        try
         {
-            _about.Activate();
-            return;
+            if (_about != null && _about.IsVisible)
+            {
+                _about.Activate();
+                // Re-checking on an already-open window is what the user asked for.
+                if (checkForUpdates)
+                    _about.BeginUpdateCheck();
+                return;
+            }
+
+            var about = new AboutWindow(_updateClient, _log);
+            about.Closed += (_, _) => { lock (_lock) { _about = null; } };
+            _about = about;
+            about.Show();
+
+            if (checkForUpdates)
+                about.BeginUpdateCheck();
         }
-        _about = new AboutWindow();
-        _about.Closed += (_, _) => { lock (_lock) { _about = null; } };
-        _about.Show();
+        catch (Exception ex)
+        {
+            _log.Exception(LogLevel.Error, "ShowAbout", ex);
+        }
     }
 
     private void ToggleStartAtLogin()

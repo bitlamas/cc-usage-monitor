@@ -37,5 +37,25 @@ public static class LogFormat
         return $"poll err{Sep}kind={kindName}{Sep}fails={snapshot.ConsecutiveFailures}{Sep}5h={pct5h}{Sep}weekly={pctWk}{Sep}fable={pctFb}";
     }
 
+    /// <summary>One line per update check, so the log records what the user was told.
+    /// The version token is omitted entirely when there is no version to name, rather
+    /// than emitting "latest=".</summary>
+    public static string UpdateCheck(UpdateCheckResult result)
+    {
+        var status = result.Status switch
+        {
+            UpdateStatus.UpdateAvailable => "available",
+            UpdateStatus.UpToDate => "up to date",
+            _ => "failed",
+        };
+
+        if (result.Status == UpdateStatus.Failed || result.LatestVersion is null)
+            return $"update check{Sep}{status}";
+
+        var v = result.LatestVersion;
+        var version = string.Create(CultureInfo.InvariantCulture, $"{v.Major}.{v.Minor}.{Math.Max(v.Build, 0)}");
+        return $"update check{Sep}{status}{Sep}latest={version}";
+    }
+
     private static string PctToken(int? pct) => pct is null ? "--%" : $"{pct}%";
 }
