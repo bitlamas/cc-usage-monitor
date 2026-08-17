@@ -122,21 +122,21 @@ public static class UsageText
         _ => "Unknown error"
     };
 
-    /// <summary>Tray tooltip: silent for transient errors, appends actionable error message.</summary>
+    /// <summary>Tray tooltip: gated on ErrorDisplay.ShouldSurface — silent for transients and below-threshold re-auth.</summary>
     public static string TrayTooltip(
-        LimitKind kind, LimitState state, DateTimeOffset updatedAt, DateTimeOffset now, ErrorKind? errorKind)
+        LimitKind kind, LimitState state, DateTimeOffset updatedAt, DateTimeOffset now, ErrorKind? errorKind, int consecutiveFailures)
     {
         var baseText = Tooltip(kind, state, updatedAt, now);
-        if (errorKind is null || ErrorPolicy.IsTransient(errorKind.Value))
-            return baseText;
-        return $"{baseText} {EmDash} {ErrorTooltip(errorKind.Value)}";
+        if (ErrorDisplay.ShouldSurface(errorKind, consecutiveFailures))
+            return $"{baseText} {EmDash} {ErrorTooltip(errorKind!.Value)}";
+        return baseText;
     }
 
-    /// <summary>Detail flyout error line: actionable messages only; null means no line.</summary>
-    public static string? FlyoutErrorLine(ErrorKind? kind)
+    /// <summary>Detail flyout error line: gated on ErrorDisplay.ShouldSurface — null means no line.</summary>
+    public static string? FlyoutErrorLine(ErrorKind? kind, int consecutiveFailures)
     {
-        if (kind is null || ErrorPolicy.IsTransient(kind.Value))
+        if (!ErrorDisplay.ShouldSurface(kind, consecutiveFailures))
             return null;
-        return ErrorTooltip(kind.Value);
+        return ErrorTooltip(kind!.Value);
     }
 }

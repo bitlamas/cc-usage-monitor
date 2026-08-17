@@ -181,6 +181,171 @@ public class PollerTests
 
     #endregion
 
+    #region Consecutive failures + back-off (A8.2–A8.8)
+
+    [Fact] // A8.2 — success snapshots have ConsecutiveFailures == 0
+    public async Task Counter_Success_KeepsZero()
+    {
+        var publishedSnapshots = new List<UsageSnapshot>();
+        var fakeClient = new FakeUsageClient(_ => Task.FromResult(
+            new UsageSnapshot(
+                BuildLimitState(50, "2026-06-19T18:00:00+00:00", true),
+                DateTimeOffset.UtcNow, null, false)));
+        var sut = new Poller(fakeClient, new FakeClock(DateTimeOffset.Parse("2026-06-18T14:00:00+00:00")), 180);
+        sut.SnapshotPublished += s => publishedSnapshots.Add(s);
+
+        await sut.ForceRefreshAsync();
+        await sut.ForceRefreshAsync();
+
+        Assert.Equal(2, publishedSnapshots.Count);
+        Assert.Equal(0, publishedSnapshots[0].ConsecutiveFailures);
+        Assert.Equal(0, publishedSnapshots[1].ConsecutiveFailures);
+    }
+
+    [Fact] // A8.3 — first failure → ConsecutiveFailures == 1
+    public async Task Counter_FirstFailure_IsOne()
+    {
+        var publishedSnapshots = new List<UsageSnapshot>();
+        var failSnap = new UsageSnapshot(
+            BuildLimitState(null, null, false),
+            DateTimeOffset.Parse("2026-06-18T14:00:00+00:00"),
+            "HTTP 429", true,
+            ErrorKind: ErrorKind.RateLimited);
+        var fakeClient = new FakeUsageClient(_ => Task.FromResult(failSnap));
+        var sut = new Poller(fakeClient, new FakeClock(DateTimeOffset.Parse("2026-06-18T14:00:00+00:00")), 180);
+        sut.SnapshotPublished += s => publishedSnapshots.Add(s);
+
+        await sut.ForceRefreshAsync();
+
+        Assert.Single(publishedSnapshots);
+        Assert.Equal(ErrorKind.RateLimited, publishedSnapshots[0].ErrorKind);
+        Assert.Equal(1, publishedSnapshots[0].ConsecutiveFailures);
+    }
+
+    [Fact] // A8.4 — two failures → ConsecutiveFailures == 2
+    public async Task Counter_TwoFailures_IsTwo()
+    {
+        var publishedSnapshots = new List<UsageSnapshot>();
+        var failSnap = new UsageSnapshot(
+            BuildLimitState(null, null, false),
+            DateTimeOffset.Parse("2026-06-18T14:00:00+00:00"),
+            "HTTP 429", true,
+            ErrorKind: ErrorKind.RateLimited);
+        var fakeClient = new FakeUsageClient(_ => Task.FromResult(failSnap));
+        var sut = new Poller(fakeClient, new FakeClock(DateTimeOffset.Parse("2026-06-18T14:00:00+00:00")), 180);
+        sut.SnapshotPublished += s => publishedSnapshots.Add(s);
+
+        await sut.ForceRefreshAsync();
+        await sut.ForceRefreshAsync();
+
+        Assert.Equal(2, publishedSnapshots.Count);
+        Assert.Equal(2, publishedSnapshots[1].ConsecutiveFailures);
+    }
+
+    [Fact] // A8.5 — failure then success → reset to 0
+    public async Task Counter_ResetsOnSuccess()
+    {
+        var publishedSnapshots = new List<UsageSnapshot>();
+        var failSnap = new UsageSnapshot(
+            BuildLimitState(null, null, false),
+            DateTimeOffset.Parse("2026-06-18T14:00:00+00:00"),
+            "HTTP 429", true,
+            ErrorKind: ErrorKind.RateLimited);
+        var okSnap = new UsageSnapshot(
+            BuildLimitState(30, "2026-06-19T18:00:00+00:00", true),
+            DateTimeOffset.Parse("2026-06-18T14:03:00+00:00"), null, false);
+
+        var fetchCount = 0;
+        var fakeClient = new FakeUsageClient(_ => Task.FromResult(
+            fetchCount++ == 0 ? failSnap : okSnap));
+        var sut = new Poller(fakeClient, new FakeClock(DateTimeOffset.Parse("2026-06-18T14:00:00+00:00")), 180);
+        sut.SnapshotPublished += s => publishedSnapshots.Add(s);
+
+        await sut.ForceRefreshAsync();
+        await sut.ForceRefreshAsync();
+
+        Assert.Equal(2, publishedSnapshots.Count);
+        Assert.Equal(1, publishedSnapshots[0].ConsecutiveFailures);
+        Assert.Equal(0, publishedSnapshots[1].ConsecutiveFailures);
+    }
+
+    [Fact] // A8.6 — back-off wiring: CliRequiredForReauth n=1 → 15s
+    public async Task BackOff_CliReauth_FirstRetryIs15()
+    {
+        var reauthSnap = new UsageSnapshot(
+            BuildLimitState(null, null, false),
+            DateTimeOffset.Parse("2026-07-14T00:00:00Z"),
+            "e", true, ErrorKind.CliRequiredForReauth);
+        var client = new FakeUsageClient(_ => Task.FromResult(reauthSnap));
+        var clock = new FakeClock(DateTimeOffset.Parse("2026-07-14T00:00:00Z"));
+        using var cts = new CancellationTokenSource();
+        var gate = new TaskCompletionSource();
+        int captured = -1;
+        var sut = new Poller(client, clock, 180, new NullLog(),
+            (s, ct) => { captured = s; gate.TrySetResult(); cts.Cancel(); return Task.CompletedTask; });
+        await sut.StartAsync(cts.Token);
+        await gate.Task;
+        Assert.Equal(15, captured); // §6, n=1 → 15
+    }
+
+    [Fact] // A8.7 — back-off wiring: RateLimited RetryAfter=0 → 60s floor
+    public async Task BackOff_RateLimited_RetryAfterZero_Is60()
+    {
+        var rateSnap = new UsageSnapshot(
+            BuildLimitState(null, null, false),
+            DateTimeOffset.Parse("2026-07-14T00:00:00Z"),
+            "429", true, ErrorKind.RateLimited, RetryAfterSeconds: 0);
+        var client = new FakeUsageClient(_ => Task.FromResult(rateSnap));
+        var clock = new FakeClock(DateTimeOffset.Parse("2026-07-14T00:00:00Z"));
+        using var cts = new CancellationTokenSource();
+        var gate = new TaskCompletionSource();
+        int captured = -1;
+        var sut = new Poller(client, clock, 180, new NullLog(),
+            (s, ct) => { captured = s; gate.TrySetResult(); cts.Cancel(); return Task.CompletedTask; });
+        await sut.StartAsync(cts.Token);
+        await gate.Task;
+        Assert.Equal(60, captured); // §6 floor
+    }
+
+    [Fact] // A8.8 — extended stale test: ConsecutiveFailures == 1 on merged stale
+    public async Task Poller_StaleSnapshot_RetainsLastGoodValues_WithCounter()
+    {
+        var publishedSnapshots = new List<UsageSnapshot>();
+
+        var t0 = DateTimeOffset.Parse("2026-06-18T14:00:00+00:00");
+        var t1 = DateTimeOffset.Parse("2026-06-18T14:03:00+00:00");
+
+        var firstSnapshot = new UsageSnapshot(
+            BuildLimitState(42, "2026-06-19T18:00:00+00:00", true),
+            t0, null, false);
+
+        var staleSnapshot = new UsageSnapshot(
+            BuildLimitState(null, null, false),
+            t1, "HTTP 429 Too Many Requests", true,
+            ErrorKind: ErrorKind.RateLimited, RetryAfterSeconds: 300);
+
+        var fetchCount = 0;
+        var fakeClient = new FakeUsageClient(_ => Task.FromResult(fetchCount++ == 0 ? firstSnapshot : staleSnapshot));
+
+        var clock = new FakeClock(t0);
+        var sut = new Poller(fakeClient, clock, 180);
+        sut.SnapshotPublished += s => publishedSnapshots.Add(s);
+
+        await sut.ForceRefreshAsync();
+        await sut.ForceRefreshAsync();
+
+        Assert.Equal(2, publishedSnapshots.Count);
+        Assert.True(publishedSnapshots[1].Stale);
+        Assert.Equal(42, publishedSnapshots[1].Limits[LimitKind.Session5h].Pct);
+        Assert.Equal(t0, publishedSnapshots[1].UpdatedAt);
+        Assert.Equal(ErrorKind.RateLimited, publishedSnapshots[1].ErrorKind);
+        Assert.Equal(300, publishedSnapshots[1].RetryAfterSeconds);
+        // A8.8: extended assertion — stale snapshot has ConsecutiveFailures == 1
+        Assert.Equal(1, publishedSnapshots[1].ConsecutiveFailures);
+    }
+
+    #endregion
+
     #region Helper
 
     private static IReadOnlyDictionary<LimitKind, LimitState> BuildLimitState(int? pct, string? resetsAtStr, bool present)

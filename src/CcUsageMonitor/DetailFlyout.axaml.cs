@@ -49,7 +49,17 @@ public partial class DetailFlyout : Window
         InitializeComponent();
 
         // Same delegate instance for subscribe/unsubscribe.
-        _snapshotHandler = _ => Dispatcher.UIThread.Post(() => { if (_poller.Current != null) UpdateDisplay(_poller.Current); });
+        _snapshotHandler = _ => Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                if (_poller.Current != null) UpdateDisplay(_poller.Current);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log.Exception(LogLevel.Error, "Flyout", ex);
+            }
+        });
 
         // Dismiss on focus loss.
         this.Deactivated += (_, _) => Close();
@@ -88,7 +98,7 @@ public partial class DetailFlyout : Window
         LimitsList!.ItemsSource = items;
         UpdatedText!.Text = $"updated {snapshot.UpdatedAt.LocalDateTime:HH:mm}";
 
-        var line = UsageText.FlyoutErrorLine(snapshot.ErrorKind);
+        var line = UsageText.FlyoutErrorLine(snapshot.ErrorKind, snapshot.ConsecutiveFailures);
         StaleText!.IsVisible = line is not null;
         StaleText!.Text = line ?? string.Empty;
     }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,12 +29,18 @@ public class TrayController : IDisposable
     private readonly INotificationSink _notificationSink;
     private readonly AlertManager _alertManager;
     private readonly string _configDir;
+    private readonly ILog _log;
     private readonly CancellationTokenSource _appCts = new();
 
     private readonly Dictionary<LimitKind, TrayIcon> _trayIcons = new();
     private readonly Dictionary<LimitKind, NativeMenuItem> _limitMenuItems = new();
     private readonly List<LimitKind> _iconOrder = new();   // current tray registration order
-    private CancellationTokenSource? _addCts;              // cancels an in-flight staggered add
+
+    // Handle-leak bookkeeping (see SetIcon): the WindowIcon currently owned by each tray
+    // icon, and the render key it was built from so identical re-renders can be skipped.
+    private readonly Dictionary<LimitKind, WindowIcon> _ownedIcons = new();
+    private readonly Dictionary<LimitKind, string> _iconKeys = new();
+
     private NativeMenu? _menu;
     private DetailFlyout? _flyout;
     private AboutWindow? _about;
@@ -60,7 +67,8 @@ public class TrayController : IDisposable
         IAutostart autostart,
         INotificationSink notificationSink,
         AlertManager alertManager,
-        string configDir)
+        string configDir,
+        ILog? log = null)
     {
         _poller = poller;
         _configStore = configStore;
@@ -68,6 +76,7 @@ public class TrayController : IDisposable
         _notificationSink = notificationSink;
         _alertManager = alertManager;
         _configDir = configDir;
+        _log = log ?? new NullLog();
 
         // Wire AlertManager as subscriber BEFORE starting poller
         _poller.SnapshotPublished += _alertManager.OnSnapshot;
@@ -99,8 +108,15 @@ public class TrayController : IDisposable
         // Poller fires on a background thread; marshal all tray UI updates to the UI thread.
         Dispatcher.UIThread.Post(() =>
         {
-            RenderSnapshot(snapshot);
-            UpdateLimitMenuItems();
+            try
+            {
+                RenderSnapshot(snapshot);
+                UpdateLimitMenuItems();
+            }
+            catch (Exception ex)
+            {
+                _log.Exception(LogLevel.Error, "RenderSnapshot", ex);
+            }
         });
     }
 
@@ -119,22 +135,101 @@ public class TrayController : IDisposable
                 var kind = kvp.Key;
                 var trayIcon = kvp.Value;
 
-                if (snapshot.Limits.TryGetValue(kind, out var state))
-                {
-                    var icon = RenderRing(state, showNumber, warnThreshold, alertThreshold);
-                    trayIcon.Icon = icon;
+                // Limit absent from the snapshot — show the dim track.
+                var state = snapshot.Limits.TryGetValue(kind, out var s)
+                    ? s
+                    : new LimitState(null, null, false);
 
-                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, state, snapshot.UpdatedAt, now, snapshot.ErrorKind);
-                }
-                else
-                {
-                    // Limit not present — show dim track
-                    var dimState = new LimitState(null, null, false);
-                    var icon = RenderRing(dimState, showNumber, warnThreshold, alertThreshold);
-                    trayIcon.Icon = icon;
-                    trayIcon.ToolTipText = UsageText.TrayTooltip(kind, dimState, snapshot.UpdatedAt, now, snapshot.ErrorKind);
-                }
+                SetIcon(kind, trayIcon, state, showNumber, warnThreshold, alertThreshold);
+                trayIcon.ToolTipText = UsageText.TrayTooltip(kind, state, snapshot.UpdatedAt, now, snapshot.ErrorKind, snapshot.ConsecutiveFailures);
             }
+        }
+    }
+
+    /// <summary>
+    /// Assigns a freshly rendered ring to <paramref name="trayIcon"/>, but only when the
+    /// rendered content actually differs from what that icon already shows, and disposes
+    /// the icon it replaces.
+    ///
+    /// Both halves matter. Every WindowIcon assignment makes the Win32 backend build a new
+    /// HICON (a USER handle plus GDI bitmaps); nothing reclaims those until the WindowIcon
+    /// that owns them is disposed. Re-assigning an identical ring on every poll therefore
+    /// burned handles at a fixed rate until the process hit its 10,000-object quota — at
+    /// which point CreateIconIndirect starts returning NULL and Avalonia throws a
+    /// Win32Exception whose message is the useless "The operation completed successfully"
+    /// (NULL without a last-error set). That was a hard crash roughly every 2-4 days of
+    /// uptime. Caller must hold _lock.
+    /// </summary>
+    private void SetIcon(
+        LimitKind kind,
+        TrayIcon trayIcon,
+        LimitState state,
+        bool showNumber,
+        int warnThreshold,
+        int alertThreshold)
+    {
+        var key = TrayIconKey.For(state, showNumber, warnThreshold, alertThreshold);
+        if (_iconKeys.TryGetValue(kind, out var previousKey) && previousKey == key)
+            return;   // identical ring already on screen — assigning it again only leaks
+
+        var icon = RenderRing(state, showNumber, warnThreshold, alertThreshold);
+        trayIcon.Icon = icon;
+        _iconKeys[kind] = key;
+
+        // Release the handles behind the icon we just replaced. Ordering is deliberate:
+        // the backend has already copied the new icon by the time we get here, so the old
+        // one is no longer referenced by anything on screen.
+        if (_ownedIcons.TryGetValue(kind, out var replaced))
+            TryDisposeIcon(replaced);
+        _ownedIcons[kind] = icon;
+    }
+
+    /// <summary>
+    /// Reads WindowIcon.PlatformImpl, which is internal to Avalonia. Resolved once and
+    /// cached; null if the property ever disappears, in which case icon handles are simply
+    /// not reclaimed (see TryDisposeIcon) rather than the app failing.
+    /// </summary>
+    private static readonly Func<WindowIcon, object?>? PlatformImplAccessor = BuildPlatformImplAccessor();
+
+    private static Func<WindowIcon, object?>? BuildPlatformImplAccessor()
+    {
+        var getter = typeof(WindowIcon)
+            .GetProperty("PlatformImpl", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?.GetGetMethod(nonPublic: true);
+        if (getter is null)
+            return null;
+        return icon => getter.Invoke(icon, null);
+    }
+
+    private bool _iconDisposalUnavailableLogged;
+
+    /// <summary>
+    /// Releases the native icon handle behind a WindowIcon. WindowIcon is not itself
+    /// IDisposable — the handle lives in its platform impl (Win32: IconImpl, holding a
+    /// Win32Icon/HICON), and nothing in Avalonia ever frees it for us. TrayIconImpl.UpdateIcon
+    /// disposes only the transient scaled copy it makes per update, so every WindowIcon we
+    /// construct and drop stranded one HICON plus its GDI bitmaps. Must never take the app down.
+    /// </summary>
+    private void TryDisposeIcon(WindowIcon icon)
+    {
+        try
+        {
+            if (PlatformImplAccessor is null)
+            {
+                if (!_iconDisposalUnavailableLogged)
+                {
+                    _iconDisposalUnavailableLogged = true;
+                    _log.Write(LogLevel.Warn, "icon disposal unavailable: WindowIcon.PlatformImpl not found; icon handles will accumulate");
+                }
+                return;
+            }
+
+            if (PlatformImplAccessor(icon) is IDisposable disposable)
+                disposable.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _log.Exception(LogLevel.Error, "DisposeIcon", ex);
         }
     }
 
@@ -145,27 +240,13 @@ public class TrayController : IDisposable
         int alertThreshold)
     {
         const int sizePx = 32;
-        var skBitmap = RingRenderer.Render(state.Pct, warnThreshold, alertThreshold, showNumber, sizePx);
-
-        // Save SKBitmap to PNG in memory, then load as Avalonia Bitmap
+        // All three intermediates hold unmanaged memory; WindowIcon copies what it needs
+        // during construction, so none of them outlive this method.
+        using var skBitmap = RingRenderer.Render(state.Pct, warnThreshold, alertThreshold, showNumber, sizePx);
         using var imageData = skBitmap.Encode(SKEncodedImageFormat.Png, 100);
         using var stream = new MemoryStream(imageData.ToArray());
-        var bitmap = new Avalonia.Media.Imaging.Bitmap(stream);
+        using var bitmap = new Avalonia.Media.Imaging.Bitmap(stream);
         return new WindowIcon(bitmap);
-    }
-
-    /// <summary>
-    /// Renders the ring for a kind from the latest snapshot if available, else the dim
-    /// track. Used to seed a tray icon with a non-blank bitmap BEFORE it is added to the
-    /// tray, so Windows' add-time snapshot (shown in Taskbar Settings) is a real ring.
-    /// </summary>
-    private WindowIcon RenderInitialIcon(LimitKind kind)
-    {
-        var config = _configStore.Load();
-        var state = _latestSnapshot is not null && _latestSnapshot.Limits.TryGetValue(kind, out var s)
-            ? s
-            : new LimitState(null, null, false);
-        return RenderRing(state, config.ShowNumberInRing, config.WarnThreshold, config.AlertThreshold);
     }
 
     private void BuildMenu(AppConfig config)
@@ -233,14 +314,28 @@ public class TrayController : IDisposable
         }
     }
 
+    /// <summary>
+    /// Brings the set of live tray icons in line with the selected limits, touching only
+    /// what actually changed: kinds that are already showing keep their existing TrayIcon.
+    ///
+    /// That "touch only what changed" rule is what makes the icons draggable. Windows
+    /// remembers a tray icon's position against the pair (executable path, notify-icon
+    /// UID), and the Win32 backend hands out UIDs in creation order. Tearing every icon
+    /// down and rebuilding them — which is what this method used to do on any change —
+    /// minted fresh UIDs each time, so Windows saw unfamiliar icons, dropped them wherever
+    /// it liked, and orphaned the positions the user had dragged them to.
+    ///
+    /// Display order is deliberately NOT managed here. This used to add icons in reverse
+    /// with a 1.5 s gap between each to try to force a left-to-right order past Explorer's
+    /// batching, which fought the user's own drag-and-drop and left icons stranded in
+    /// separate batches. Ordering is the shell's job and the user's choice; we just add
+    /// them and let Windows place them.
+    /// </summary>
     private void SyncIcons(AppConfig config)
     {
-        List<LimitKind> addOrder;
-        int addGapMs;
         lock (_lock)
         {
-            // Desired left-to-right display order = config.SelectedLimits order,
-            // filtered to the selectable kinds (drops any unknown/non-selectable kind).
+            // Selected limits, filtered to the selectable kinds (drops any unknown kind).
             var desired = config.SelectedLimits
                 .Where(SelectableKinds.Contains)
                 .Distinct()
@@ -248,119 +343,103 @@ public class TrayController : IDisposable
             if (desired.Count == 0)
                 desired = new List<LimitKind>(DefaultLimits);
 
-            // Already showing exactly this set in this order → nothing to do.
             if (desired.SequenceEqual(_iconOrder))
-                return;
-
-            // Abandon any staggered add still in flight from a previous call.
-            _addCts?.Cancel();
+                return;   // already showing exactly this set
 
             var icons = TrayIcon.GetIcons(Application.Current!);
-            foreach (var kind in _iconOrder)
-            {
-                if (_trayIcons.TryGetValue(kind, out var ti))
-                {
-                    icons?.Remove(ti);
-                    ti.Dispose();
-                }
-            }
-            _trayIcons.Clear();
+
+            // Retire only the kinds that are no longer selected.
+            foreach (var kind in _iconOrder.Where(k => !desired.Contains(k)).ToList())
+                RemoveIcon(icons, kind);
+
+            // Add only the kinds that aren't showing yet, in config order.
+            foreach (var kind in desired.Where(k => !_trayIcons.ContainsKey(k)))
+                AddIcon(icons, kind, config);
+
             _iconOrder.Clear();
             _iconOrder.AddRange(desired);
-
-            // Add order + inter-add gap are decided per-OS by TrayPlanner.PlanTrayAdds
-            // (Windows: reversed + staggered for Explorer's overflow/batching; Linux: as-is, no gap).
-            var plan = TrayPlanner.PlanTrayAdds(desired, OperatingSystem.IsWindows());
-            addOrder = plan.Order.ToList();
-            addGapMs = plan.GapMs;
         }
-
-        _addCts = new CancellationTokenSource();
-        _ = AddIconsStaggeredAsync(addOrder, addGapMs, _addCts.Token);
     }
 
-    /// <summary>
-    /// Adds the tray icons one at a time with a delay between each. The gap is essential
-    /// on Windows (Explorer batches icons added close together and orders that batch
-    /// arbitrarily). On Linux the gap is 0 (no batching issue).
-    /// Fire-and-forget from SyncIcons; runs on the UI thread (Avalonia sync context).
-    /// </summary>
-    private async Task AddIconsStaggeredAsync(List<LimitKind> addOrder, int gapMs, CancellationToken ct)
+    /// <summary>Creates one tray icon and shows it. Caller must hold _lock.</summary>
+    private void AddIcon(IList<TrayIcon>? icons, LimitKind kind, AppConfig config)
     {
-        var icons = TrayIcon.GetIcons(Application.Current!);
-
         try
         {
-            // Wait briefly for the first usage snapshot so each icon carries a real
-            // (colored) ring the moment it's added — not the dim track. This matters
-            // because Windows captures the tray icon for the Taskbar Settings list
-            // ("Other system tray icons") AT ADD TIME and does not reliably refresh
-            // that capture when we update the icon later: an icon added blank stays a
-            // blank/placeholder square in Settings forever. Bounded so we never hang
-            // if the API is unreachable (falls back to the dim track ring).
-            for (int w = 0; w < 50 && _latestSnapshot is null && !ct.IsCancellationRequested; w++)
-                await Task.Delay(100, ct);
-
-            for (int i = 0; i < addOrder.Count; i++)
+            // Created hidden so the ring bitmap is in place before NIM_ADD fires: Windows
+            // captures the icon for the Taskbar Settings list at add time and does not
+            // reliably refresh that capture later, so an icon added blank stays a blank
+            // square in Settings forever. The tooltip is seeded with the limit's name for
+            // the same reason — it is what Settings records as the entry's label.
+            var trayIcon = new TrayIcon
             {
-                if (ct.IsCancellationRequested)
-                    return;
+                ToolTipText = GetLimitLabel(kind),
+                IsVisible = false
+            };
+            trayIcon.Clicked += OnTrayIconClicked;
+            if (_menu != null)
+                trayIcon.Menu = _menu;   // BuildMenu covers icons that already exist; this covers later ones
 
-                if (i > 0)
-                    await Task.Delay(gapMs, ct);
+            _trayIcons[kind] = trayIcon;
 
-                var kind = addOrder[i];
-                // Create HIDDEN with the ring already set, then add, then make visible.
-                // Windows snapshots the tray icon for Taskbar Settings at the NIM_ADD that
-                // fires when the icon becomes visible — so the bitmap must already be in
-                // place by then, or Settings shows a blank square forever.
-                var trayIcon = new TrayIcon
-                {
-                    ToolTipText = "Loading…",
-                    IsVisible = false,
-                    Icon = RenderInitialIcon(kind)
-                };
-                trayIcon.Clicked += OnTrayIconClicked;
+            // Seed with the latest known state, or the dim track if we haven't polled yet.
+            var state = _latestSnapshot is not null && _latestSnapshot.Limits.TryGetValue(kind, out var s)
+                ? s
+                : new LimitState(null, null, false);
+            SetIcon(kind, trayIcon, state, config.ShowNumberInRing, config.WarnThreshold, config.AlertThreshold);
 
-                lock (_lock)
-                {
-                    if (ct.IsCancellationRequested)
-                    {
-                        trayIcon.Dispose();
-                        return;
-                    }
-                    if (_menu != null)
-                        trayIcon.Menu = _menu;   // BuildMenu assigns to already-added icons; this covers later ones
-                    _trayIcons[kind] = trayIcon;
-                }
-
-                icons?.Add(trayIcon);
-                trayIcon.IsVisible = true;   // fires NIM_ADD with the ring already in place
-
-                // Paint immediately from the latest snapshot so it isn't blank mid-stagger.
-                var snap = _latestSnapshot;
-                if (snap != null)
-                    RenderSnapshot(snap);
-            }
+            icons?.Add(trayIcon);
+            trayIcon.IsVisible = true;
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
-            // Superseded by a newer SyncIcons — nothing to do.
+            _log.Exception(LogLevel.Error, "AddIcon", ex);
+        }
+    }
+
+    /// <summary>Removes one tray icon and releases its handles. Caller must hold _lock.</summary>
+    private void RemoveIcon(IList<TrayIcon>? icons, LimitKind kind)
+    {
+        try
+        {
+            if (_trayIcons.TryGetValue(kind, out var ti))
+            {
+                icons?.Remove(ti);
+                ti.Dispose();
+                _trayIcons.Remove(kind);
+            }
+            if (_ownedIcons.TryGetValue(kind, out var owned))
+            {
+                TryDisposeIcon(owned);
+                _ownedIcons.Remove(kind);
+            }
+            _iconKeys.Remove(kind);
+        }
+        catch (Exception ex)
+        {
+            _log.Exception(LogLevel.Error, "RemoveIcon", ex);
         }
     }
 
     private void OnTrayIconClicked(object? sender, EventArgs e)
     {
-        // Left-click → toggle detail flyout
-        if (_flyout != null && _flyout.IsVisible)
+        try
         {
-            _flyout.Close();
+            // Left-click → toggle detail flyout
+            if (_flyout != null && _flyout.IsVisible)
+            {
+                _flyout.Close();
+            }
+            else
+            {
+                _flyout = new DetailFlyout(_poller, _configStore) { Anchor = GetCursorPosition() };
+                _flyout.Closed += (_, _) => { lock (_lock) { _flyout = null; } };
+                _flyout.Show();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _flyout = new DetailFlyout(_poller, _configStore) { Anchor = GetCursorPosition() };
-            _flyout.Closed += (_, _) => { lock (_lock) { _flyout = null; } };
-            _flyout.Show();
+            _log.Exception(LogLevel.Error, "Flyout", ex);
         }
     }
 
@@ -542,12 +621,13 @@ public class TrayController : IDisposable
     private void Quit()
     {
         _appCts.Cancel();
-        // Use dynamic to call Shutdown() on the desktop lifetime
-        if (Application.Current?.ApplicationLifetime is IApplicationLifetime lifetime)
-        {
-            var shutdownMethod = lifetime.GetType().GetMethod("Shutdown");
-            shutdownMethod?.Invoke(lifetime, null);
-        }
+        // Called directly, not by reflection. The old code did GetMethod("Shutdown") then
+        // Invoke(lifetime, null), but the method is Shutdown(int exitCode = 0) — reflection
+        // does not apply optional-argument defaults, so passing no arguments threw
+        // TargetParameterCountException and every use of the Quit menu item crashed the app
+        // instead of shutting it down cleanly.
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            desktop.Shutdown();
     }
 
     private static string GetLimitLabel(LimitKind kind) => kind switch
@@ -563,12 +643,12 @@ public class TrayController : IDisposable
         _appCts.Dispose();
         lock (_lock)
         {
-            foreach (var kvp in _trayIcons)
-            {
-                TrayIcon.GetIcons(Application.Current!)?.Remove(kvp.Value);
-                kvp.Value.Dispose();
-            }
+            var icons = TrayIcon.GetIcons(Application.Current!);
+            foreach (var kind in _trayIcons.Keys.ToList())
+                RemoveIcon(icons, kind);
             _trayIcons.Clear();
+            _ownedIcons.Clear();
+            _iconKeys.Clear();
         }
     }
 }
