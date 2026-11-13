@@ -43,33 +43,33 @@ public class RingRendererTests
     // --- Null pct → transparent disc with outline, no text ---
 
     [Fact]
-    public void Render_NullPct_DrawsTransparentDiscWithOutline()
+    public void Render_NullPct_DrawsTrackFillWithOutline()
     {
         var bitmap = RingRenderer.Render(null, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // Center pixel should be transparent (no wedge, transparent track).
+        // Center pixel should have the track fill (semi-transparent grey, no wedge).
         var center = bitmap.GetPixel(16, 16);
-        Assert.True(center.Alpha < 10,
-            $"Center should be transparent, got alpha={center.Alpha}");
-        // Outline: top edge pixel should be dark (the 1px stroke ring).
+        Assert.True(center.Alpha > 10,
+            $"Center should have track fill alpha, got alpha={center.Alpha}");
+        // Outline: top edge pixel should be grey (the 1px stroke ring, visible on dark mode).
         var topEdge = bitmap.GetPixel(16, 1);
-        Assert.True(topEdge.Red < 60 && topEdge.Green < 60 && topEdge.Blue < 60,
-            $"Top edge should be dark outline, got {topEdge}");
+        Assert.True(topEdge.Red > 100 && topEdge.Green > 100 && topEdge.Blue > 100,
+            $"Top edge should be grey outline, got {topEdge}");
     }
 
     // --- Filled disc track is drawn (even at 0%) ---
 
     [Fact]
-    public void Render_0Pct_TrackIsTransparentWithOutline()
+    public void Render_0Pct_TrackFillWithOutline()
     {
         var bitmap = RingRenderer.Render(0, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
-        // At 0% there's no wedge, transparent fill with thin outline.
+        // At 0% there's no wedge, but track fill is drawn with thin outline.
         var center = bitmap.GetPixel(16, 16);
-        Assert.True(center.Alpha < 10,
-            $"Center should be transparent, got alpha={center.Alpha}");
+        Assert.True(center.Alpha > 10,
+            $"Center should have track fill alpha, got alpha={center.Alpha}");
         // Outline at edge.
         var topEdge = bitmap.GetPixel(16, 1);
-        Assert.True(topEdge.Red < 60 && topEdge.Green < 60 && topEdge.Blue < 60,
-            $"Top edge should be dark outline, got {topEdge}");
+        Assert.True(topEdge.Red > 100 && topEdge.Green > 100 && topEdge.Blue > 100,
+            $"Top edge should be grey outline, got {topEdge}");
     }
 
     // --- Wedge starts at 12 o'clock (top), filled disc ---
@@ -189,12 +189,12 @@ public class RingRendererTests
     {
         var bitmap = RingRenderer.Render(-10, DefaultWarn, DefaultAlert, showNumber: false, DefaultSize);
         // -10 clamped to 0 → band is green, sweep 0° (no wedge).
-        // Center transparent, outline at edge.
+        // Center has track fill, outline at edge.
         var center = bitmap.GetPixel(16, 16);
-        Assert.True(center.Alpha < 10, $"Center should be transparent, got alpha={center.Alpha}");
+        Assert.True(center.Alpha > 10, $"Center should have track fill alpha, got alpha={center.Alpha}");
         var topEdge = bitmap.GetPixel(16, 1);
-        Assert.True(topEdge.Red < 60 && topEdge.Green < 60 && topEdge.Blue < 60,
-            $"Top edge should be dark outline, got {topEdge}");
+        Assert.True(topEdge.Red > 100 && topEdge.Green > 100 && topEdge.Blue > 100,
+            $"Top edge should be grey outline, got {topEdge}");
     }
 
     // --- Helper: approximate color match (accounts for anti-aliasing pixels) ---

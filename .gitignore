@@ -5,6 +5,7 @@
 .gatto/
 AGENTS.md
 CLAUDE.md
+GATTO.md
 
 # .NET build artifacts
 bin/

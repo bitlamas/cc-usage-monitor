@@ -27,10 +27,22 @@ public static class RingRenderer
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(SKColors.Transparent);
 
-        // --- Track (transparent fill + thin dark outline ring) ---
+        // --- Track fill (semi-transparent medium grey disc) ---
+        // Visible on both light and dark system trays. Drawn before the wedge so
+        // the wedge always has a background, and before the outline so the outline
+        // sits on top of the fill.
+        using var trackFillPaint = new SKPaint
+        {
+            Color = new SKColor(0x88, 0x88, 0x88, 0x40),
+            IsStroke = false,
+            IsAntialias = true
+        };
+        canvas.DrawCircle(half, half, radius, trackFillPaint);
+
+        // --- Track outline (visible on both light and dark backgrounds) ---
         using var trackOutlinePaint = new SKPaint
         {
-            Color = new SKColor(0x00, 0x00, 0x00, 0xCC),
+            Color = new SKColor(0x88, 0x88, 0x88, 0x80),
             StrokeWidth = 1f,
             IsStroke = true,
             IsAntialias = true
